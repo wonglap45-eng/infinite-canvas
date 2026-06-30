@@ -37,7 +37,7 @@ type AssetStore = {
     cleanupImages: (extra?: unknown) => void;
 };
 
-const ASSET_STORE_KEY = "infinite-canvas:asset_store";
+const ASSET_STORE_KEY = "eons-ai-image-studio:asset_store";
 
 const assetStorage: PersistStorage<AssetStore> = {
     getItem: async (name) => {

@@ -9,11 +9,13 @@ import { readImageMeta } from "@/lib/image-utils";
 export type CanvasImageMaskEditPayload = {
     prompt: string;
     maskDataUrl: string;
+    maskPreviewDataUrl?: string;
 };
 
 type DrawMode = "paint" | "erase";
 
 const defaultBrushSize = 100;
+const defaultFeatherRadius = 8;
 const maskFillColor = "rgba(37, 99, 235, .38)";
 const maskBorderColor = "rgba(255, 255, 255, .72)";
 
@@ -24,6 +26,7 @@ export function CanvasNodeMaskEditDialog({ dataUrl, open, onClose, onConfirm }: 
     const [image, setImage] = useState<{ width: number; height: number } | null>(null);
     const [prompt, setPrompt] = useState("");
     const [brushSize, setBrushSize] = useState(defaultBrushSize);
+    const [featherRadius, setFeatherRadius] = useState(defaultFeatherRadius);
     const [mode, setMode] = useState<DrawMode>("paint");
     const [error, setError] = useState("");
 
@@ -31,6 +34,7 @@ export function CanvasNodeMaskEditDialog({ dataUrl, open, onClose, onConfirm }: 
         if (!open) return;
         setPrompt("");
         setBrushSize(defaultBrushSize);
+        setFeatherRadius(defaultFeatherRadius);
         setMode("paint");
         setError("");
         void readImageMeta(dataUrl).then(setImage);
@@ -97,7 +101,7 @@ export function CanvasNodeMaskEditDialog({ dataUrl, open, onClose, onConfirm }: 
         if (!nextPrompt) return setError("请输入修改要求");
         if (!canvas) return;
         if (!canvasHasPaint(canvas)) return setError("请先涂抹局部区域");
-        onConfirm({ prompt: nextPrompt, maskDataUrl: buildEditMask(canvas) });
+        onConfirm({ prompt: nextPrompt, maskDataUrl: buildEditMask(canvas, featherRadius), maskPreviewDataUrl: buildMaskReferencePreview(canvas, featherRadius) });
     };
 
     return (
@@ -145,6 +149,15 @@ export function CanvasNodeMaskEditDialog({ dataUrl, open, onClose, onConfirm }: 
                             <span className="font-semibold">{brushSize}px</span>
                         </div>
                         <Slider min={8} max={160} step={2} value={brushSize} onChange={setBrushSize} />
+                    </div>
+
+                    <div className="space-y-2">
+                        <div className="flex items-center justify-between text-sm">
+                            <span className="font-medium opacity-75">边缘柔化</span>
+                            <span className="font-semibold">{featherRadius}px</span>
+                        </div>
+                        <Slider min={0} max={32} step={1} value={featherRadius} onChange={setFeatherRadius} />
+                        <div className="text-xs leading-5 text-stone-500 dark:text-stone-400">柔化能减少修改边缘生硬，但选区不要涂到不希望变化的文字和 logo。</div>
                     </div>
 
                     <div className="space-y-2">
@@ -259,21 +272,57 @@ function isMaskEdge(data: Uint8ClampedArray, width: number, x: number, y: number
     return data[((y - step) * width + x) * 4 + 3] === 0 || data[((y + step) * width + x) * 4 + 3] === 0 || data[(y * width + x - step) * 4 + 3] === 0 || data[(y * width + x + step) * 4 + 3] === 0;
 }
 
-function buildEditMask(selectionCanvas: HTMLCanvasElement) {
+function buildEditMask(selectionCanvas: HTMLCanvasElement, featherRadius = 0) {
     const canvas = document.createElement("canvas");
     canvas.width = selectionCanvas.width;
     canvas.height = selectionCanvas.height;
     const context = canvas.getContext("2d");
     if (!context) return selectionCanvas.toDataURL("image/png");
-    const selectionContext = selectionCanvas.getContext("2d");
     context.fillStyle = "#fff";
     context.fillRect(0, 0, canvas.width, canvas.height);
-    if (!selectionContext) return canvas.toDataURL("image/png");
-    const selection = selectionContext.getImageData(0, 0, canvas.width, canvas.height);
+    const selection = getSelectionImageData(selectionCanvas, featherRadius);
+    if (!selection) return canvas.toDataURL("image/png");
     const mask = context.getImageData(0, 0, canvas.width, canvas.height);
     for (let index = 3; index < mask.data.length; index += 4) {
-        if (selection.data[index] > 0) mask.data[index] = 0;
+        if (selection.data[index] > 0) mask.data[index] = Math.max(0, 255 - selection.data[index]);
     }
     context.putImageData(mask, 0, 0);
     return canvas.toDataURL("image/png");
+}
+
+function buildMaskReferencePreview(selectionCanvas: HTMLCanvasElement, featherRadius = 0) {
+    const canvas = document.createElement("canvas");
+    canvas.width = selectionCanvas.width;
+    canvas.height = selectionCanvas.height;
+    const context = canvas.getContext("2d");
+    const selection = getSelectionImageData(selectionCanvas, featherRadius);
+    if (!context || !selection) return selectionCanvas.toDataURL("image/png");
+    context.fillStyle = "#f8fafc";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    const preview = context.getImageData(0, 0, canvas.width, canvas.height);
+    for (let index = 0; index < preview.data.length; index += 4) {
+        const alpha = selection.data[index + 3];
+        if (alpha <= 0) continue;
+        const opacity = Math.max(96, Math.min(220, alpha));
+        preview.data[index] = 37;
+        preview.data[index + 1] = 99;
+        preview.data[index + 2] = 235;
+        preview.data[index + 3] = opacity;
+    }
+    context.putImageData(preview, 0, 0);
+    return canvas.toDataURL("image/png");
+}
+
+function getSelectionImageData(selectionCanvas: HTMLCanvasElement, featherRadius = 0) {
+    const selectionContext = selectionCanvas.getContext("2d");
+    if (!selectionContext) return null;
+    if (featherRadius <= 0) return selectionContext.getImageData(0, 0, selectionCanvas.width, selectionCanvas.height);
+    const canvas = document.createElement("canvas");
+    canvas.width = selectionCanvas.width;
+    canvas.height = selectionCanvas.height;
+    const context = canvas.getContext("2d");
+    if (!context) return selectionContext.getImageData(0, 0, selectionCanvas.width, selectionCanvas.height);
+    context.filter = `blur(${featherRadius}px)`;
+    context.drawImage(selectionCanvas, 0, 0);
+    return context.getImageData(0, 0, canvas.width, canvas.height);
 }

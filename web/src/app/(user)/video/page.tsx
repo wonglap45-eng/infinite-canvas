@@ -66,8 +66,8 @@ type GenerationLogConfig = Pick<AiConfig, "model" | "videoModel" | "size" | "vqu
 
 type UpdateAiConfig = <K extends keyof AiConfig>(key: K, value: AiConfig[K]) => void;
 
-const LOG_STORE_KEY = "infinite-canvas:video_generation_logs";
-const logStore = localforage.createInstance({ name: "infinite-canvas", storeName: "video_generation_logs" });
+const LOG_STORE_KEY = "eons-ai-image-studio:video_generation_logs";
+const logStore = localforage.createInstance({ name: "eons-ai-image-studio", storeName: "video_generation_logs" });
 
 export default function VideoPage() {
     const { message } = App.useApp();

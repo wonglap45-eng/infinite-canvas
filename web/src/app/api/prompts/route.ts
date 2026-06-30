@@ -57,7 +57,7 @@ export async function GET(request: NextRequest) {
     return Response.json({
         items: filtered.slice((page - 1) * pageSize, page * pageSize),
         tags: collectTags(withoutTagFilter),
-        categories: categories.map((item) => item.category),
+        categories: collectCategories(items),
         total: filtered.length,
     });
 }
@@ -82,9 +82,13 @@ async function loadPrompts() {
             }
         }),
     );
-    const items = settled.flat();
+    const items = settled.flat().filter(hasVisualCover);
     memoryCache = { items, fetchedAt: Date.now() };
     return items;
+}
+
+function hasVisualCover(item: Prompt) {
+    return Boolean(item.coverUrl?.trim());
 }
 
 function filterPrompts(items: Prompt[], options: { keyword: string; category: string; tags: string[] }) {
@@ -206,13 +210,27 @@ function firstMatch(value: string, pattern: RegExp) {
 }
 
 function extractMarkdownImages(baseUrl: string, markdown: string) {
-    return Array.from(markdown.matchAll(/!\[[^\]]*]\(([^)]+)\)/g), (match) => absoluteImage(baseUrl, match[1])).filter(Boolean);
+    return [
+        ...Array.from(markdown.matchAll(/!\[[^\]]*]\(([^)]+)\)/g), (match) => absoluteImage(baseUrl, match[1])),
+        ...Array.from(markdown.matchAll(/<img\b[^>]*\bsrc=["']([^"']+)["'][^>]*>/gi), (match) => absoluteImage(baseUrl, match[1])),
+    ].filter(isPromptSceneImage);
 }
 
 function absoluteImage(baseUrl: string, image: string) {
     if (!image) return "";
     if (/^https?:\/\//i.test(image)) return image;
     return `${baseUrl}/${image.replace(/^\.?\//, "")}`;
+}
+
+function isPromptSceneImage(image: string) {
+    const value = image.trim();
+    const lower = value.toLowerCase();
+    if (!value) return false;
+    if (lower.endsWith(".svg") || lower.includes(".svg?")) return false;
+    if (lower.includes("shields.io") || lower.includes("awesome.re/badge") || lower.includes("/badge.svg")) return false;
+    if (lower.includes("/actions/workflows/") || lower.includes("license") || lower.includes("prs-welcome")) return false;
+    if (lower.includes("click%20to%20view") || lower.includes("current-brightgreen")) return false;
+    return /\.(png|jpe?g|webp|gif)(?:[?#].*)?$/i.test(value) || lower.includes("pbs.twimg.com/media/");
 }
 
 function tagsFromCategory(category: string) {
@@ -247,6 +265,11 @@ function markdownPreview(images: string[]) {
 
 function collectTags(items: Prompt[]) {
     return Array.from(new Set(items.flatMap((item) => item.tags).filter(Boolean)));
+}
+
+function collectCategories(items: Prompt[]) {
+    const visibleCategories = new Set(items.map((item) => item.category).filter(Boolean));
+    return categories.map((item) => item.category).filter((category) => visibleCategories.has(category));
 }
 
 function leftPad(value: number) {

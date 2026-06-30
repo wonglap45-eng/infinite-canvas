@@ -22,6 +22,9 @@ export function CanvasProjectCard({ project }: { project: CanvasProject }) {
     const setDeleteIds = useCanvasUiStore((state) => state.setDeleteProjectIds);
     const editing = editingId === project.id;
     const selected = selectedIds.includes(project.id);
+    const imageCount = project.nodes.filter((node) => node.type === "image").length;
+    const textCount = project.nodes.filter((node) => node.type === "text").length;
+    const videoCount = project.nodes.filter((node) => node.type === "video").length;
     const open = () => router.push(`/canvas/${project.id}${searchParams.toString() ? `?${searchParams.toString()}` : ""}`);
     const saveTitle = () => {
         renameProject(project.id, editingTitle);
@@ -54,6 +57,11 @@ export function CanvasProjectCard({ project }: { project: CanvasProject }) {
                         <p className="mt-3 text-sm leading-6 text-stone-600 dark:text-stone-400">
                             {project.nodes.length} 个节点 · {project.connections.length} 条连线
                         </p>
+                        <p className="mt-2 flex flex-wrap gap-1.5 text-xs text-stone-500 dark:text-stone-400">
+                            <span className="rounded bg-white/55 px-2 py-0.5 dark:bg-white/10">图 {imageCount}</span>
+                            <span className="rounded bg-white/55 px-2 py-0.5 dark:bg-white/10">文 {textCount}</span>
+                            <span className="rounded bg-white/55 px-2 py-0.5 dark:bg-white/10">视频 {videoCount}</span>
+                        </p>
                     </button>
                 )}
             </div>
@@ -67,7 +75,7 @@ export function CanvasProjectCard({ project }: { project: CanvasProject }) {
                         </>
                     ) : (
                         <>
-                            <Button type="text" size="small" shape="circle" icon={<Download className="size-4" />} onClick={() => void exportCanvasProjects([project], project.title || "无限画布")} aria-label="导出" />
+                            <Button type="text" size="small" shape="circle" icon={<Download className="size-4" />} onClick={() => void exportCanvasProjects([project], project.title || "EONS画布")} aria-label="导出" />
                             <Button type="text" size="small" shape="circle" icon={<Pencil className="size-4" />} onClick={() => startEditing(project.id, project.title)} aria-label="重命名" />
                             <Button type="text" size="small" shape="circle" icon={<Trash2 className="size-4" />} onClick={() => setDeleteIds([project.id])} aria-label="删除" />
                         </>

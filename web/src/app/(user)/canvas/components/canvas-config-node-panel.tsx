@@ -2,12 +2,13 @@
 
 import type { CSSProperties } from "react";
 import { Image as ImageIcon, LoaderCircle, MessageSquare, Music2, Play, Settings2, Square, Video } from "lucide-react";
-import { Button, Segmented } from "antd";
+import { App, Button, Segmented } from "antd";
 
 import { ModelPicker } from "@/components/model-picker";
 import { defaultConfig, useConfigStore, useEffectiveConfig, type AiConfig } from "@/stores/use-config-store";
 import { CreditSymbol, requestCreditCost } from "@/constant/credits";
 import { canvasThemes } from "@/lib/canvas-theme";
+import { imageGenerationPreflightItems, normalizeImageGenerationCount, shouldConfirmImageGeneration, type PreflightItem } from "@/lib/generation-preflight";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { CanvasImageSettingsPopover } from "./canvas-image-settings-popover";
 import { CanvasAudioSettingsPopover, type CanvasAudioSettingKey } from "./canvas-audio-settings-popover";
@@ -25,17 +26,36 @@ type CanvasConfigNodePanelProps = {
 };
 
 export function CanvasConfigNodePanel({ node, isRunning, inputSummary, onConfigChange, onGenerate, onStop, onComposerToggle }: CanvasConfigNodePanelProps) {
+    const { modal } = App.useApp();
     const globalConfig = useEffectiveConfig();
     const openConfigDialog = useConfigStore((state) => state.openConfigDialog);
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const mode = node.metadata?.generationMode || "image";
     const config = buildNodeConfig(globalConfig, node, mode);
-    const count = Math.max(1, Math.min(15, Math.floor(Math.abs(Number(config.count)) || 1)));
+    const count = normalizeImageGenerationCount(config.count);
     const credits = requestCreditCost({ channelMode: config.channelMode, model: config.model, count: mode === "image" ? count : 1 });
     const chipStyle = { background: theme.node.fill, borderColor: theme.node.stroke, color: theme.node.text };
     const hasAnyInput = Boolean(inputSummary.textCount || inputSummary.imageCount || inputSummary.videoCount || inputSummary.audioCount);
     const hasComposerContent = Boolean((node.metadata?.composerContent ?? node.metadata?.prompt ?? "").trim());
     const canGenerate = hasComposerContent || (mode === "audio" ? inputSummary.textCount > 0 : hasAnyInput);
+    const promptText = (node.metadata?.composerContent ?? node.metadata?.prompt ?? "").trim();
+    const startGeneration = () => {
+        if (isRunning) {
+            onStop(node.id);
+            return;
+        }
+        if (mode === "image" && shouldConfirmImageGeneration({ count, prompt: promptText, quality: config.quality, size: config.size, referenceCount: inputSummary.imageCount })) {
+            modal.confirm({
+                title: "生成前确认",
+                content: <PreflightList items={imageGenerationPreflightItems(config, { count, prompt: promptText, referenceCount: inputSummary.imageCount })} />,
+                okText: "开始生成",
+                cancelText: "再检查一下",
+                onOk: () => onGenerate(node.id),
+            });
+            return;
+        }
+        onGenerate(node.id);
+    };
 
     return (
         <div className="flex h-full w-full cursor-move flex-col px-3 pb-3 pt-7 text-sm" style={{ color: theme.node.text }} onWheel={(event) => event.stopPropagation()}>
@@ -117,7 +137,7 @@ export function CanvasConfigNodePanel({ node, isRunning, inputSummary, onConfigC
                 danger={isRunning}
                 disabled={!isRunning && !canGenerate}
                 onMouseDown={(event) => event.stopPropagation()}
-                onClick={() => (isRunning ? onStop(node.id) : onGenerate(node.id))}
+                onClick={startGeneration}
             >
                 <span className="inline-flex items-center gap-1.5">
                     {isRunning ? (
@@ -140,6 +160,28 @@ export function CanvasConfigNodePanel({ node, isRunning, inputSummary, onConfigC
             </Button>
         </div>
     );
+}
+
+function PreflightList({ items }: { items: PreflightItem[] }) {
+    return (
+        <div className="space-y-2 text-sm">
+            <div>请确认本次生成设置，避免误消耗额度。</div>
+            <ul className="m-0 list-none space-y-1.5 p-0">
+                {items.map((item) => (
+                    <li key={`${item.label}-${item.value}`} className={preflightItemClass(item.level)}>
+                        <span className="shrink-0 font-medium">{item.label}：</span>
+                        <span>{item.value}</span>
+                    </li>
+                ))}
+            </ul>
+        </div>
+    );
+}
+
+function preflightItemClass(level: PreflightItem["level"]) {
+    if (level === "danger") return "flex gap-1.5 rounded-md bg-red-50 px-2 py-1 text-red-700";
+    if (level === "warning") return "flex gap-1.5 rounded-md bg-amber-50 px-2 py-1 text-amber-700";
+    return "flex gap-1.5 px-2 py-0.5 text-stone-700";
 }
 
 function InputChip({ label, value, style }: { label: string; value: string; style: CSSProperties }) {

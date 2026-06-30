@@ -329,10 +329,31 @@ export const CanvasNode = React.memo(function CanvasNode({
             <ConnectionHandleDot side="left" visible={hovered || isSelected || isConnecting} onMouseDown={(event) => onConnectStart(event, data.id, "target")} />
             <ConnectionHandleDot side="right" visible={data.type !== CanvasNodeType.Config && (hovered || isSelected || isConnecting)} onMouseDown={(event) => onConnectStart(event, data.id, "source")} />
 
-            {showPanel && renderPanel ? <div className="absolute left-1/2 top-full z-[70] w-[500px] -translate-x-1/2 pt-4">{renderPanel(data)}</div> : null}
+            {showPanel && renderPanel ? (
+                <div
+                    className="absolute left-1/2 top-full z-[70] pt-4"
+                    style={{
+                        width: panelWidth(data),
+                        transform: `translateX(-50%) scale(${panelScale(scale)})`,
+                        transformOrigin: "top center",
+                    }}
+                >
+                    {renderPanel(data)}
+                </div>
+            ) : null}
         </div>
     );
 });
+
+function panelWidth(node: CanvasNodeData) {
+    if (node.type === CanvasNodeType.Image && node.metadata?.content) return 760;
+    return 560;
+}
+
+function panelScale(scale: number) {
+    if (!Number.isFinite(scale) || scale <= 0) return 1;
+    return Math.min(2.4, Math.max(1, 1 / scale));
+}
 
 function NodeContent(props: NodeContentRendererProps) {
     if (props.node.type === CanvasNodeType.Config && props.renderNodeContent) return props.renderNodeContent(props.node);

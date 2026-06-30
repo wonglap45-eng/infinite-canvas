@@ -7,8 +7,8 @@ import "./globals.css";
 import React from "react";
 
 export const metadata: Metadata = {
-    title: "无限画布",
-    description: "一个无限画布创作工具",
+    title: "EONS AI Image Studio",
+    description: "EONS internal AI image workspace",
 };
 
 export default function RootLayout({
@@ -28,7 +28,7 @@ export default function RootLayout({
                     id="theme-script"
                     strategy="beforeInteractive"
                     dangerouslySetInnerHTML={{
-                        __html: `try{var s=JSON.parse(localStorage.getItem("infinite-canvas:theme_store")||"{}");var t=s.state&&s.state.theme==="light"?"light":"dark";document.documentElement.classList.toggle("dark",t==="dark");document.documentElement.style.colorScheme=t}catch(e){}`,
+                        __html: `try{var s=JSON.parse(localStorage.getItem("eons-ai-image-studio:theme_store")||"{}");var t=s.state&&s.state.theme==="light"?"light":"dark";document.documentElement.classList.toggle("dark",t==="dark");document.documentElement.style.colorScheme=t}catch(e){}`,
                     }}
                 />
                 <AntdRegistry>

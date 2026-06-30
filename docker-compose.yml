@@ -1,7 +1,11 @@
 services:
   app:
-    image: ghcr.io/basketikun/infinite-canvas:latest
-    container_name: infinite-canvas
+    image: eons-ai-image-studio:latest
+    container_name: eons-ai-image-studio
     ports:
       - "3000:3000"
+    environment:
+      NODE_ENV: production
+      HOSTNAME: 0.0.0.0
+      PORT: 3000
     restart: unless-stopped

@@ -33,7 +33,7 @@ export function getAntThemeConfig(dark: boolean): ThemeConfig {
 
     return {
         algorithm: dark ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
-        cssVar: { key: dark ? "infinite-canvas-dark" : "infinite-canvas-light" },
+        cssVar: { key: dark ? "eons-ai-image-studio-dark" : "eons-ai-image-studio-light" },
         token: {
             colorPrimary: color.primary,
             colorInfo: color.primary,

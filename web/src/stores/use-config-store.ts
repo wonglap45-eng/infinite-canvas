@@ -56,31 +56,35 @@ export type WebdavSyncConfig = {
     lastSyncedAt: string;
 };
 
-export const CONFIG_STORE_KEY = "infinite-canvas:ai_config_store";
+export const CONFIG_STORE_KEY = "eons-ai-image-studio:ai_config_store";
 export type ModelCapability = "image" | "video" | "text" | "audio";
 const CHANNEL_MODEL_SEPARATOR = "::";
 const OPENAI_BASE_URL = "https://api.openai.com";
 const GEMINI_BASE_URL = "https://generativelanguage.googleapis.com";
+const OPENROUTER_MODEL_ALIASES: Record<string, string> = {
+    "gpt-image-2": "openai/gpt-image-2",
+    "gpt-5.5": "openai/gpt-5.5",
+};
 
 export const defaultConfig: AiConfig = {
     channelMode: "local",
-    baseUrl: OPENAI_BASE_URL,
+    baseUrl: "",
     apiKey: "",
     apiFormat: "openai",
     channels: [
         {
             id: "default",
             name: "默认渠道",
-            baseUrl: OPENAI_BASE_URL,
+            baseUrl: "",
             apiKey: "",
             apiFormat: "openai",
-            models: ["gpt-image-2", "grok-imagine-video", "gpt-5.5", "gpt-4o-mini-tts"],
+            models: ["openai/gpt-image-2", "openai/gpt-5.5", "grok-imagine-video", "gpt-4o-mini-tts"],
         },
     ],
-    model: "default::gpt-image-2",
-    imageModel: "default::gpt-image-2",
+    model: "default::openai/gpt-image-2",
+    imageModel: "default::openai/gpt-image-2",
     videoModel: "default::grok-imagine-video",
-    textModel: "default::gpt-5.5",
+    textModel: "default::openai/gpt-5.5",
     audioModel: "default::gpt-4o-mini-tts",
     audioVoice: "alloy",
     audioFormat: "mp3",
@@ -91,15 +95,15 @@ export const defaultConfig: AiConfig = {
     videoGenerateAudio: "true",
     videoWatermark: "false",
     systemPrompt: "",
-    models: ["default::gpt-image-2", "default::grok-imagine-video", "default::gpt-5.5", "default::gpt-4o-mini-tts"],
-    imageModels: ["default::gpt-image-2"],
+    models: ["default::openai/gpt-image-2", "default::openai/gpt-5.5", "default::grok-imagine-video", "default::gpt-4o-mini-tts"],
+    imageModels: ["default::openai/gpt-image-2"],
     videoModels: ["default::grok-imagine-video"],
-    textModels: ["default::gpt-5.5"],
+    textModels: ["default::openai/gpt-5.5"],
     audioModels: ["default::gpt-4o-mini-tts"],
     quality: "auto",
     size: "1:1",
     count: "1",
-    canvasImageCount: "3",
+    canvasImageCount: "1",
 };
 
 export const defaultWebdavSyncConfig: WebdavSyncConfig = {
@@ -107,7 +111,7 @@ export const defaultWebdavSyncConfig: WebdavSyncConfig = {
     url: "",
     username: "",
     password: "",
-    directory: "infinite-canvas",
+    directory: "eons-ai-image-studio",
     lastSyncedAt: "",
 };
 
@@ -165,8 +169,7 @@ function modelListKey(capability: ModelCapability) {
 }
 
 function isAiConfigReady(config: AiConfig, model: string) {
-    const channel = resolveModelChannel(config, model);
-    return Boolean(model.trim() && channel.baseUrl.trim() && channel.apiKey.trim());
+    return Boolean(model.trim());
 }
 
 export const useConfigStore = create<ConfigStore>()(
@@ -197,12 +200,12 @@ export const useConfigStore = create<ConfigStore>()(
         }),
         {
             name: CONFIG_STORE_KEY,
-            partialize: (state) => ({ config: state.config, webdav: state.webdav }),
+            partialize: (state) => ({ config: stripSensitiveConfig(state.config), webdav: state.webdav }),
             merge: (persisted, current) => {
                 const persistedState = (persisted || {}) as Partial<ConfigStore>;
                 const persistedConfig = (persistedState.config || {}) as Partial<AiConfig>;
                 const persistedWebdav = (persistedState.webdav || {}) as Partial<WebdavSyncConfig>;
-                const config = { ...defaultConfig, ...persistedConfig };
+                const config = stripSensitiveConfig({ ...defaultConfig, ...persistedConfig });
                 if (!Array.isArray(persistedConfig.channels)) config.channels = [];
                 const channels = normalizeChannels(config);
                 const models = modelOptionsFromChannels(channels);
@@ -212,7 +215,9 @@ export const useConfigStore = create<ConfigStore>()(
                     config: {
                         ...config,
                         channelMode: "local",
-                        apiFormat: normalizeApiFormat(config.apiFormat),
+                        baseUrl: "",
+                        apiKey: "",
+                        apiFormat: "openai",
                         channels,
                         models,
                         imageModel: normalizeModelOptionValue(config.imageModel || config.model, channels),
@@ -227,7 +232,7 @@ export const useConfigStore = create<ConfigStore>()(
                         vquality: config.vquality || "720",
                         videoGenerateAudio: config.videoGenerateAudio || "true",
                         videoWatermark: config.videoWatermark || "false",
-                        canvasImageCount: config.canvasImageCount || "3",
+                        canvasImageCount: config.canvasImageCount || "1",
                         imageModels: Array.isArray(persistedConfig.imageModels) ? normalizeModelList(config.imageModels, channels) : filterModelsByCapability(models, "image"),
                         videoModels: Array.isArray(persistedConfig.videoModels) ? normalizeModelList(config.videoModels, channels) : filterModelsByCapability(models, "video"),
                         textModels: Array.isArray(persistedConfig.textModels) ? normalizeModelList(config.textModels, channels) : filterModelsByCapability(models, "text"),
@@ -241,7 +246,7 @@ export const useConfigStore = create<ConfigStore>()(
 
 function normalizeModelList(models: string[], channels: ModelChannel[]) {
     const allModelOptions = channels.flatMap((channel) => channel.models.map((model) => encodeChannelModel(channel.id, model)));
-    return Array.from(new Set((models || []).map((model) => model.trim()).filter(Boolean)))
+    return Array.from(new Set((models || []).map((model) => normalizeModelAlias(model.trim())).filter(Boolean)))
         .map((model) => normalizeModelOptionValue(model, channels))
         .filter((model) => !allModelOptions.length || allModelOptions.includes(model) || !isChannelModelValue(model));
 }
@@ -252,12 +257,12 @@ export function useEffectiveConfig() {
 }
 
 export function createModelChannel(channel?: Partial<ModelChannel>): ModelChannel {
-    const apiFormat = normalizeApiFormat(channel?.apiFormat);
+    const apiFormat = "openai";
     return {
         id: channel?.id?.trim() || nanoid(),
         name: channel?.name?.trim() || "新渠道",
-        baseUrl: channel?.baseUrl?.trim() || defaultBaseUrlForApiFormat(apiFormat),
-        apiKey: channel?.apiKey || "",
+        baseUrl: "",
+        apiKey: "",
         apiFormat,
         models: uniqueRawModels(channel?.models || []),
     };
@@ -293,7 +298,7 @@ export function modelOptionsFromChannels(channels: ModelChannel[]) {
 }
 
 export function normalizeModelOptionValue(value: string | undefined, channels: ModelChannel[]) {
-    const model = (value || "").trim();
+    const model = normalizeModelAlias((value || "").trim());
     if (!model) return "";
     const decoded = decodeChannelModel(model);
     if (decoded) {
@@ -316,9 +321,9 @@ export function resolveModelRequestConfig(config: AiConfig, value: string) {
     return {
         ...config,
         model: modelOptionName(value || config.model),
-        baseUrl: channel.baseUrl,
-        apiKey: channel.apiKey,
-        apiFormat: channel.apiFormat,
+        baseUrl: "",
+        apiKey: "",
+        apiFormat: "openai" as const,
     };
 }
 
@@ -354,6 +359,21 @@ function normalizeChannels(config: AiConfig) {
     return channels.map((channel) => ({ ...channel, models: uniqueRawModels(channel.models) }));
 }
 
+function stripSensitiveConfig(config: AiConfig): AiConfig {
+    return {
+        ...config,
+        baseUrl: "",
+        apiKey: "",
+        apiFormat: "openai",
+        channels: (config.channels || defaultConfig.channels).map((channel) => ({
+            ...channel,
+            baseUrl: "",
+            apiKey: "",
+            apiFormat: "openai",
+        })),
+    };
+}
+
 export function defaultBaseUrlForApiFormat(apiFormat: ApiCallFormat) {
     return apiFormat === "gemini" ? GEMINI_BASE_URL : OPENAI_BASE_URL;
 }
@@ -363,18 +383,24 @@ function normalizeApiFormat(apiFormat: unknown): ApiCallFormat {
 }
 
 function uniqueRawModels(models: string[]) {
-    return Array.from(new Set((models || []).map((model) => modelOptionName(model).trim()).filter(Boolean)));
+    return Array.from(new Set((models || []).map((model) => normalizeModelAlias(modelOptionName(model).trim())).filter(Boolean)));
 }
 
 function uniqueModelOptions(models: string[]) {
-    return Array.from(new Set((models || []).map((model) => model.trim()).filter(Boolean)));
+    return Array.from(new Set((models || []).map((model) => normalizeModelAlias(model.trim())).filter(Boolean)));
+}
+
+function normalizeModelAlias(model: string) {
+    const decoded = decodeChannelModel(model);
+    if (decoded) return encodeChannelModel(decoded.channelId, OPENROUTER_MODEL_ALIASES[decoded.model] || decoded.model);
+    return OPENROUTER_MODEL_ALIASES[model] || model;
 }
 
 export function buildApiUrl(baseUrl: string, path: string) {
     let normalizedBaseUrl = baseUrl.trim().replace(/\/+$/, "");
     normalizedBaseUrl = normalizeArkPlanBaseUrl(normalizedBaseUrl);
     const lowerBaseUrl = normalizedBaseUrl.toLowerCase();
-    const apiBaseUrl = lowerBaseUrl.endsWith("/v1") || lowerBaseUrl.endsWith("/api/v3") || lowerBaseUrl.endsWith("/api/plan/v3") ? normalizedBaseUrl : `${normalizedBaseUrl}/v1`;
+    const apiBaseUrl = lowerBaseUrl.endsWith("/v1") || lowerBaseUrl.endsWith("/api/v1") || lowerBaseUrl.endsWith("/api/v3") || lowerBaseUrl.endsWith("/api/plan/v3") ? normalizedBaseUrl : `${normalizedBaseUrl}/v1`;
     return `${apiBaseUrl}${path}`;
 }
 

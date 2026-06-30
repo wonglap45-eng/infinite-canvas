@@ -3,25 +3,25 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent as ReactChangeEvent, DragEvent as ReactDragEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { BookOpen, Bot, Home, ImageIcon, Images, List, Menu, Music2, Plus, Redo2, Settings2, Trash2, Undo2, Upload, Video } from "lucide-react";
+import { Bot, Home, ImageIcon, Images, List, Menu, Music2, Plus, Redo2, Settings2, Trash2, Undo2, Upload, Video } from "lucide-react";
 import { saveAs } from "file-saver";
 
 import { requestEdit, requestGeneration, requestImageQuestion } from "@/services/api/image";
 import { requestAudioGeneration, storeGeneratedAudio } from "@/services/api/audio";
 import { requestVideoGeneration, storeGeneratedVideo } from "@/services/api/video";
-import { DOCS_URL } from "@/constant/env";
 import { defaultConfig, type AiConfig, useConfigStore, useEffectiveConfig } from "@/stores/use-config-store";
-import { resolveImageUrl, uploadImage, type UploadedImage } from "@/services/image-storage";
+import { imageToDataUrl, resolveImageUrl, uploadImage, type UploadedImage } from "@/services/image-storage";
 import { resolveMediaUrl, uploadMediaFile, type UploadedFile } from "@/services/file-storage";
 import { nanoid } from "nanoid";
 import { getDataUrlByteSize, readImageMeta } from "@/lib/image-utils";
+import { imageVariationPrompt } from "@/lib/image-variation-prompt";
 import { canvasThemes, type CanvasBackgroundMode } from "@/lib/canvas-theme";
 import { UserStatusActions } from "@/components/layout/user-status-actions";
 import { useAssetStore } from "@/stores/use-asset-store";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { cropDataUrl, splitDataUrl, upscaleDataUrl } from "../utils/canvas-image-data";
 import { fitNodeSize, nodeSizeFromRatio } from "../utils/canvas-node-size";
-import { App, Button, Dropdown, Modal } from "antd";
+import { App, Button, Dropdown, Input, Modal } from "antd";
 import { NODE_DEFAULT_SIZE, getNodeSpec } from "../constants";
 import { ActiveConnectionPath, ConnectionPath } from "../components/canvas-connections";
 import { CanvasConfigComposer } from "../components/canvas-config-composer";
@@ -35,7 +35,7 @@ import { CanvasNodeSplitDialog, type CanvasImageSplitParams } from "../component
 import { CanvasNodeUpscaleDialog, type CanvasImageUpscaleParams } from "../components/canvas-node-upscale-dialog";
 import { buildNodeGenerationContext, buildNodeGenerationInputs, buildNodeResponseMessages, hydrateNodeGenerationContext, type NodeGenerationInput } from "../components/canvas-node-generation";
 import { CanvasNodeHoverToolbar, CanvasNodeInfoModal } from "../components/canvas-node-hover-toolbar";
-import { InfiniteCanvas } from "../components/infinite-canvas";
+import { CanvasSurface } from "../components/canvas-surface";
 import { Minimap } from "../components/canvas-mini-map";
 import { CanvasNode } from "../components/canvas-node";
 import { CanvasNodePromptPanel, type CanvasNodeGenerationMode } from "../components/canvas-node-prompt-panel";
@@ -43,8 +43,10 @@ import { CanvasToolbar } from "../components/canvas-toolbar";
 import { AssetPickerModal, type InsertAssetPayload } from "../components/asset-picker-modal";
 import { CanvasZoomControls } from "../components/canvas-zoom-controls";
 import { CanvasLocalAgentPanel } from "../components/canvas-local-agent-panel";
+import { GenerationMonitorModal } from "@/components/generation/generation-monitor-modal";
 import { useCanvasAgentStore } from "../stores/use-canvas-agent-store";
 import { useCanvasStore } from "../stores/use-canvas-store";
+import { useGenerationMonitorStore } from "@/stores/use-generation-monitor-store";
 import { applyCanvasAgentOps, type CanvasAgentOp, type CanvasAgentSnapshot } from "../utils/canvas-agent-ops";
 import { buildCanvasResourceReferences, buildNodeMentionReferences } from "../utils/canvas-resource-references";
 import type { CanvasAgentMode } from "../components/canvas-agent-chat-ui";
@@ -106,9 +108,11 @@ const IMAGE_PROMPT_REVERSE_PRESET = `请根据参考图片反推一段适合用�
 
 要求：
 1. 只输出提示词正文，不要解释。
-2. 覆盖主体、构图、风格、光线、色彩、材质、镜头和氛围。
-3. 尽量写成可直接用于生图模型的完整提示词。`;
-
+2. 你是一名 Amazon 资深电商美工和产品摄影指导。
+3. 输出中文生图提示词，方便员工检查和修改，也要适合 OpenRouter / gpt-image-2 直接使用。
+4. 保留参考图产品的品牌识别、包装比例、瓶型、颜色、标签位置和核心卖点，不要重绘成另一个产品。
+5. 明确构图、镜头、光线、材质、背景、商业用途和质量标准。
+6. 加入约束：不要额外文字、不要水印、不要扭曲 logo、不要虚构包装、不要不可读标签。`;
 function createCanvasNode(type: CanvasNodeType, position: Position, metadata?: CanvasNodeMetadata): CanvasNodeData {
     const spec = getNodeSpec(type);
     const id = `${type}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -136,7 +140,7 @@ export default function CanvasPage() {
 
     if (!mounted) return <CanvasRefreshShell />;
 
-    return <InfiniteCanvasPage />;
+    return <CanvasWorkspacePage />;
 }
 
 function CanvasRefreshShell() {
@@ -217,7 +221,7 @@ function ConnectionCreateOption({ theme, icon, title, description, onClick }: { 
     );
 }
 
-function InfiniteCanvasPage() {
+function CanvasWorkspacePage() {
     const { message, modal } = App.useApp();
     const params = useParams<{ id: string }>();
     const router = useRouter();
@@ -260,6 +264,7 @@ function InfiniteCanvasPage() {
     const openConfigDialog = useConfigStore((state) => state.openConfigDialog);
     const addAsset = useAssetStore((state) => state.addAsset);
     const cleanupAssetImages = useAssetStore((state) => state.cleanupImages);
+    const addMonitorEntry = useGenerationMonitorStore((state) => state.addEntry);
     const hydrated = useCanvasStore((state) => state.hydrated);
     const createProject = useCanvasStore((state) => state.createProject);
     const openProject = useCanvasStore((state) => state.openProject);
@@ -289,6 +294,10 @@ function InfiniteCanvasPage() {
     const [showImageInfo, setShowImageInfo] = useState(false);
     const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
     const [assetPickerOpen, setAssetPickerOpen] = useState(false);
+    const [monitorOpen, setMonitorOpen] = useState(false);
+    const [promptGeneratorOpen, setPromptGeneratorOpen] = useState(false);
+    const [promptGeneratorInput, setPromptGeneratorInput] = useState("");
+    const [promptGenerating, setPromptGenerating] = useState(false);
     const [projectLoaded, setProjectLoaded] = useState(false);
     const [toolbarNodeId, setToolbarNodeId] = useState<string | null>(null);
     const [nodeImageSettingsOpen, setNodeImageSettingsOpen] = useState(false);
@@ -1031,7 +1040,7 @@ function InfiniteCanvasPage() {
     }, [applyHistory]);
 
     const createAndOpenProject = useCallback(() => {
-        const id = createProject(`无限画布 ${useCanvasStore.getState().projects.length + 1}`);
+        const id = createProject(`EONS 画布 ${useCanvasStore.getState().projects.length + 1}`);
         router.push(`/canvas/${id}`);
     }, [createProject, router]);
 
@@ -1548,16 +1557,19 @@ function InfiniteCanvasPage() {
 
     const saveNodeAsset = useCallback(
         async (node: CanvasNodeData) => {
+            const projectTitle = currentProject?.title || "未命名画布";
+            const tags = ["画布", projectTitle].filter(Boolean);
+            const metadata = { source: "canvas", projectId, projectTitle, nodeId: node.id, prompt: node.metadata?.prompt };
             if (node.type === CanvasNodeType.Text) {
                 const content = node.metadata?.content?.trim();
                 if (!content) return message.error("没有可保存的文本");
-                addAsset({ kind: "text", title: node.metadata?.prompt?.slice(0, 24) || "画布文本", coverUrl: "", tags: [], source: "Canvas", data: { content }, metadata: { source: "canvas", nodeId: node.id } });
+                addAsset({ kind: "text", title: node.metadata?.prompt?.slice(0, 24) || "画布文本", coverUrl: "", tags, source: projectTitle, data: { content }, metadata });
                 message.success("已加入我的素材");
                 return;
             }
             if (node.type === CanvasNodeType.Video) {
                 if (!node.metadata?.content) return message.error("没有可保存的视频");
-                addAsset({ kind: "video", title: node.metadata?.prompt?.slice(0, 24) || "画布视频", coverUrl: "", tags: [], source: "Canvas", data: { url: node.metadata.content, storageKey: node.metadata.storageKey, width: node.width, height: node.height, bytes: node.metadata.bytes || 0, mimeType: node.metadata.mimeType || "video/mp4" }, metadata: { source: "canvas", nodeId: node.id, prompt: node.metadata?.prompt } });
+                addAsset({ kind: "video", title: node.metadata?.prompt?.slice(0, 24) || "画布视频", coverUrl: "", tags, source: projectTitle, data: { url: node.metadata.content, storageKey: node.metadata.storageKey, width: node.width, height: node.height, bytes: node.metadata.bytes || 0, mimeType: node.metadata.mimeType || "video/mp4" }, metadata });
                 message.success("已加入我的素材");
                 return;
             }
@@ -1567,8 +1579,8 @@ function InfiniteCanvasPage() {
                 kind: "image",
                 title: node.metadata?.prompt?.slice(0, 24) || "画布图片",
                 coverUrl: node.metadata.content,
-                tags: [],
-                source: "Canvas",
+                tags,
+                source: projectTitle,
                 data: {
                     dataUrl,
                     storageKey: node.metadata.storageKey,
@@ -1577,11 +1589,11 @@ function InfiniteCanvasPage() {
                     bytes: node.metadata.bytes || getDataUrlByteSize(dataUrl),
                     mimeType: node.metadata.mimeType || "image/png",
                 },
-                metadata: { source: "canvas", nodeId: node.id, prompt: node.metadata?.prompt },
+                metadata,
             });
             message.success("已加入我的素材");
         },
-        [addAsset, message],
+        [addAsset, currentProject?.title, message, projectId],
     );
 
     const createImageReversePromptNodes = useCallback(
@@ -1630,6 +1642,103 @@ function InfiniteCanvasPage() {
         },
         [effectiveConfig.model, effectiveConfig.textModel, message],
     );
+
+    const createGeneratedPromptNode = useCallback(
+        (content: string) => {
+            const text = content.trim();
+            if (!text) return;
+            const selectedImages = nodesRef.current.filter((node) => selectedNodeIdsRef.current.has(node.id) && node.type === CanvasNodeType.Image && node.metadata?.content);
+            const anchor = selectedImages[0];
+            const spec = NODE_DEFAULT_SIZE[CanvasNodeType.Text];
+            const center = anchor ? { x: anchor.position.x + anchor.width + 120 + spec.width / 2, y: anchor.position.y + anchor.height / 2 } : getCanvasCenter();
+            const node = {
+                ...createCanvasNode(CanvasNodeType.Text, center, { content: text, prompt: text, status: NODE_STATUS_SUCCESS, fontSize: 14 }),
+                title: "生成提示词",
+            };
+
+            setNodes((prev) => [...prev, node]);
+            setSelectedNodeIds(new Set([node.id]));
+            setSelectedConnectionId(null);
+            setDialogNodeId(node.id);
+            setPromptGeneratorOpen(false);
+            setPromptGeneratorInput("");
+            message.success("提示词已生成");
+        },
+        [getCanvasCenter, message],
+    );
+
+    const generatePromptNode = useCallback(async () => {
+        const need = promptGeneratorInput.trim();
+        if (!need) {
+            message.warning("请输入需求");
+            return;
+        }
+        const requestConfig = { ...effectiveConfig, model: effectiveConfig.textModel || effectiveConfig.model || defaultConfig.textModel };
+        if (!useConfigStore.getState().isAiConfigReady(requestConfig, requestConfig.model)) {
+            message.warning("请先完成文本模型配置");
+            return;
+        }
+
+        setPromptGenerating(true);
+        const startedAt = performance.now();
+        let selectedImageCount = 0;
+        try {
+            const selectedImages = nodesRef.current.filter((node) => selectedNodeIdsRef.current.has(node.id) && node.type === CanvasNodeType.Image && node.metadata?.content).slice(0, 4);
+            selectedImageCount = selectedImages.length;
+            const imageParts = await Promise.all(
+                selectedImages.map(async (node) => ({
+                    type: "image_url" as const,
+                    image_url: { url: await imageToDataUrl({ dataUrl: node.metadata.content, storageKey: node.metadata.storageKey }) },
+                })),
+            );
+            const text =
+                "你是一名 Amazon 资深电商美工、产品摄影指导和高转化主图设计师。你的任务是把用户的简单中文需求改写成可直接用于 AI 图片生成模型的中文提示词。\n\n" +
+                "只输出最终中文提示词正文，不要解释，不要编号，不要 Markdown，不要夹杂英文专业短语。\n\n" +
+                "核心目标：生成高级、干净、真实、适合 Amazon / 独立站商品页的商业产品图，而不是艺术图、随手拼贴图或廉价合成图。\n\n" +
+                "如果提供了参考图片：必须保留参考产品的品牌识别、包装比例、瓶型/盒型、主色、标签位置、配件类型和核心视觉层级；允许优化灯光、背景、角度、构图和质感；禁止把产品改成另一个品牌或另一套包装。\n\n" +
+                "提示词必须包含：主体说明、产品保真要求、构图、镜头角度、光线、背景、材质、阴影、商业用途、质量等级和负面约束。\n\n" +
+                "必须包含这些负面约束：不要额外文字、不要水印、不要扭曲 logo、不要虚构包装、不要畸形瓶身、不要不可读标签、不要杂乱道具、不要低清晰度、不要卡通风格。\n\n" +
+                `用户需求：${need}`;
+            const answer = await requestImageQuestion(requestConfig, [{ role: "user", content: imageParts.length ? [{ type: "text", text }, ...imageParts] : text }], () => {});
+            createGeneratedPromptNode(answer || need);
+            addMonitorEntry({
+                scope: "canvas",
+                action: "prompt",
+                status: "success",
+                model: requestConfig.model,
+                count: 1,
+                successCount: 1,
+                failCount: 0,
+                referenceCount: selectedImageCount,
+                promptPreview: need.slice(0, 220),
+                durationMs: performance.now() - startedAt,
+                projectId,
+                projectTitle: currentProject?.title,
+                config: requestConfig,
+            });
+        } catch (error) {
+            const errorDetails = error instanceof Error ? error.message : "提示词生成失败";
+            message.error(errorDetails);
+            addMonitorEntry({
+                scope: "canvas",
+                action: "prompt",
+                status: "failed",
+                model: requestConfig.model,
+                count: 1,
+                successCount: 0,
+                failCount: 1,
+                referenceCount: selectedImageCount,
+                promptPreview: need.slice(0, 220),
+                error: errorDetails,
+                durationMs: performance.now() - startedAt,
+                projectId,
+                projectTitle: currentProject?.title,
+                config: requestConfig,
+            });
+        } finally {
+            setPromptGenerating(false);
+        }
+    }, [addMonitorEntry, createGeneratedPromptNode, currentProject?.title, effectiveConfig, message, projectId, promptGeneratorInput]);
 
     const cropImageNode = useCallback(async (node: CanvasNodeData, crop: CanvasImageCropRect) => {
         if (!node.metadata?.content) return;
@@ -1726,22 +1835,57 @@ function InfiniteCanvasPage() {
             setSelectedConnectionId(null);
             setDialogNodeId(childId);
             const controller = startGenerationRequest(childId, node.id, childId);
+            const startedAt = performance.now();
             try {
-                const image = await requestEdit(generationConfig, prompt, [source], { id: `${node.id}-mask`, name: "mask.png", type: "image/png", dataUrl: payload.maskDataUrl }, { signal: controller.signal }).then((items) => items[0]);
+                const maskReference = { id: `${node.id}-mask`, name: "mask.png", type: "image/png", dataUrl: payload.maskDataUrl, referenceDataUrl: payload.maskPreviewDataUrl } as ReferenceImage & { referenceDataUrl?: string };
+                const image = await requestEdit(generationConfig, prompt, [source], maskReference, { signal: controller.signal }).then((items) => items[0]);
                 const uploaded = await uploadImage(image.dataUrl);
                 const size = fitNodeSize(uploaded.width, uploaded.height, node.width, node.height);
                 setNodes((prev) => prev.map((item) => (item.id === childId ? { ...item, width: size.width, height: size.height, metadata: { ...item.metadata, ...imageMetadata(uploaded), prompt, ...generationMetadata } } : item)));
+                addMonitorEntry({
+                    scope: "canvas",
+                    action: "mask-edit",
+                    status: "success",
+                    model: generationConfig.model,
+                    count: 1,
+                    successCount: 1,
+                    failCount: 0,
+                    referenceCount: 1,
+                    promptPreview: userPrompt.slice(0, 220),
+                    durationMs: performance.now() - startedAt,
+                    projectId,
+                    projectTitle: currentProject?.title,
+                    nodeId: node.id,
+                    config: generationConfig,
+                });
             } catch (error) {
                 if (isGenerationCanceled(error)) return;
                 const errorDetails = error instanceof Error ? error.message : "局部修改失败";
                 message.error(errorDetails);
                 setNodes((prev) => prev.map((item) => (item.id === childId ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_ERROR, errorDetails } } : item)));
+                addMonitorEntry({
+                    scope: "canvas",
+                    action: "mask-edit",
+                    status: "failed",
+                    model: generationConfig.model,
+                    count: 1,
+                    successCount: 0,
+                    failCount: 1,
+                    referenceCount: 1,
+                    promptPreview: userPrompt.slice(0, 220),
+                    error: errorDetails,
+                    durationMs: performance.now() - startedAt,
+                    projectId,
+                    projectTitle: currentProject?.title,
+                    nodeId: node.id,
+                    config: generationConfig,
+                });
             } finally {
                 finishGenerationRequest(childId, controller);
                 setRunningNodeId(null);
             }
         },
-        [effectiveConfig, finishGenerationRequest, isAiConfigReady, message, openConfigDialog, startGenerationRequest],
+        [addMonitorEntry, currentProject?.title, effectiveConfig, finishGenerationRequest, isAiConfigReady, message, openConfigDialog, projectId, startGenerationRequest],
     );
 
     const upscaleImageNode = useCallback(async (node: CanvasNodeData, params: CanvasImageUpscaleParams) => {
@@ -1999,8 +2143,8 @@ function InfiniteCanvasPage() {
                     const gap = 96;
                     const rowGap = 36;
                     const rootId = isEmptyImageNode ? nodeId : nanoid();
-                    const childIds = count > 1 ? Array.from({ length: count }, () => nanoid()) : [];
-                    const targetIds = count > 1 ? childIds : [rootId];
+                    const childIds = count > 1 ? Array.from({ length: count - 1 }, () => nanoid()) : [];
+                    const targetIds = count > 1 ? [rootId, ...childIds] : [rootId];
                     pendingChildIds = isEmptyImageNode ? childIds : [rootId, ...childIds];
                     const rootNode: CanvasNodeData = {
                         id: rootId,
@@ -2078,56 +2222,59 @@ function InfiniteCanvasPage() {
 
                     const controller = runController;
                     targetIds.forEach((targetId) => startGenerationRequest(targetId, nodeId, nodeId, controller));
-                    if (count > 1) startGenerationRequest(rootId, nodeId, nodeId, controller);
+                    const batchStartedAt = performance.now();
                     let hasSuccess = false;
                     let hasFailure = false;
-                    await Promise.all(
-                        targetIds.map(async (targetId) => {
-                            try {
-                                const image = referenceImages.length
-                                    ? await requestEdit({ ...generationConfig, count: "1" }, effectivePrompt, referenceImages, undefined, { signal: controller.signal }).then((items) => items[0])
-                                    : await requestGeneration({ ...generationConfig, count: "1" }, effectivePrompt, { signal: controller.signal }).then((items) => items[0]);
-                                const uploaded = await uploadImage(image.dataUrl);
-                                const imageSize = fitNodeSize(uploaded.width, uploaded.height, imageConfig.width, imageConfig.height);
-                                setNodes((prev) => {
-                                    const root = prev.find((node) => node.id === rootId);
-                                    return prev.map((node) => {
-                                        if (node.id !== targetId && node.id !== rootId) return node;
-                                        const center = { x: node.position.x + node.width / 2, y: node.position.y + node.height / 2 };
-                                        if (node.id === rootId && (targetId === rootId || !root?.metadata?.primaryImageId))
-                                            return {
-                                                ...node,
-                                                position: { x: center.x - imageSize.width / 2, y: center.y - imageSize.height / 2 },
-                                                width: imageSize.width,
-                                                height: imageSize.height,
-                                                metadata: { ...node.metadata, ...imageMetadata(uploaded), primaryImageId: targetId },
-                                            };
-                                        if (node.id === targetId)
-                                            return {
-                                                ...node,
-                                                position: { x: center.x - imageSize.width / 2, y: center.y - imageSize.height / 2 },
-                                                width: imageSize.width,
-                                                height: imageSize.height,
-                                                metadata: { ...node.metadata, ...imageMetadata(uploaded) },
-                                            };
-                                        return node;
-                                    });
+                    let successCount = 0;
+                    let failureCount = 0;
+                    let lastErrorDetails = "";
+                    for (const [targetIndex, targetId] of targetIds.entries()) {
+                        if (controller.signal.aborted) break;
+                        const variantPrompt = imageVariationPrompt(effectivePrompt, targetIndex, count, referenceImages.length > 0);
+                        try {
+                            const image = referenceImages.length
+                                ? await requestEdit({ ...generationConfig, count: "1" }, variantPrompt, referenceImages, undefined, { signal: controller.signal }).then((items) => items[0])
+                                : await requestGeneration({ ...generationConfig, count: "1" }, variantPrompt, { signal: controller.signal }).then((items) => items[0]);
+                            const uploaded = await uploadImage(image.dataUrl);
+                            const imageSize = fitNodeSize(uploaded.width, uploaded.height, imageConfig.width, imageConfig.height);
+                            setNodes((prev) => {
+                                const root = prev.find((node) => node.id === rootId);
+                                return prev.map((node) => {
+                                    if (node.id !== targetId && node.id !== rootId) return node;
+                                    const center = { x: node.position.x + node.width / 2, y: node.position.y + node.height / 2 };
+                                    if (node.id === rootId && (targetId === rootId || !root?.metadata?.primaryImageId))
+                                        return {
+                                            ...node,
+                                            position: { x: center.x - imageSize.width / 2, y: center.y - imageSize.height / 2 },
+                                            width: imageSize.width,
+                                            height: imageSize.height,
+                                            metadata: { ...node.metadata, ...imageMetadata(uploaded), primaryImageId: targetId },
+                                        };
+                                    if (node.id === targetId)
+                                        return {
+                                            ...node,
+                                            position: { x: center.x - imageSize.width / 2, y: center.y - imageSize.height / 2 },
+                                            width: imageSize.width,
+                                            height: imageSize.height,
+                                            metadata: { ...node.metadata, ...imageMetadata(uploaded) },
+                                        };
+                                    return node;
                                 });
-                                hasSuccess = true;
-                                if (isConfigNode) setNodes((prev) => prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, status: NODE_STATUS_SUCCESS, errorDetails: undefined } } : node)));
-                                return true;
-                            } catch (error) {
-                                if (isGenerationCanceled(error)) return false;
-                                const errorDetails = error instanceof Error ? error.message : "生成失败";
-                                hasFailure = true;
-                                setNodes((prev) => prev.map((node) => (node.id === targetId ? { ...node, metadata: { ...node.metadata, status: NODE_STATUS_ERROR, errorDetails } } : node)));
-                            } finally {
-                                finishGenerationRequest(targetId, controller);
-                            }
-                            return false;
-                        }),
-                    );
-                    if (count > 1) finishGenerationRequest(rootId, controller);
+                            });
+                            hasSuccess = true;
+                            successCount += 1;
+                            if (isConfigNode) setNodes((prev) => prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, status: NODE_STATUS_SUCCESS, errorDetails: undefined } } : node)));
+                        } catch (error) {
+                            if (isGenerationCanceled(error)) break;
+                            const errorDetails = error instanceof Error ? error.message : "生成失败";
+                            hasFailure = true;
+                            failureCount += 1;
+                            lastErrorDetails = errorDetails;
+                            setNodes((prev) => prev.map((node) => (node.id === targetId ? { ...node, metadata: { ...node.metadata, status: NODE_STATUS_ERROR, errorDetails } } : node)));
+                        } finally {
+                            finishGenerationRequest(targetId, controller);
+                        }
+                    }
                     if (controller.signal.aborted) {
                         setNodes((prev) => prev.map((node) => (node.id === nodeId && isConfigNode && node.metadata?.status === NODE_STATUS_LOADING ? { ...node, metadata: { ...node.metadata, status: NODE_STATUS_IDLE, errorDetails: undefined } } : node)));
                         return;
@@ -2144,6 +2291,23 @@ function InfiniteCanvasPage() {
                                     : node,
                         ),
                     );
+                    addMonitorEntry({
+                        scope: "canvas",
+                        action: referenceImages.length ? "edit" : "generate",
+                        status: hasSuccess ? "success" : "failed",
+                        model: generationConfig.model,
+                        count,
+                        successCount,
+                        failCount: failureCount,
+                        referenceCount: referenceImages.length,
+                        promptPreview: effectivePrompt.slice(0, 220),
+                        error: hasFailure ? lastErrorDetails || (hasSuccess ? "部分图片生成失败" : "全部图片生成失败") : undefined,
+                        durationMs: performance.now() - batchStartedAt,
+                        projectId,
+                        projectTitle: currentProject?.title,
+                        nodeId,
+                        config: generationConfig,
+                    });
                     return;
                 }
 
@@ -2266,7 +2430,7 @@ function InfiniteCanvasPage() {
                 setRunningNodeId(null);
             }
         },
-        [effectiveConfig, finishGenerationRequest, isAiConfigReady, message, openConfigDialog, startGenerationRequest],
+        [addMonitorEntry, currentProject?.title, effectiveConfig, finishGenerationRequest, isAiConfigReady, message, openConfigDialog, projectId, startGenerationRequest],
     );
     useEffect(() => {
         generateNodeRef.current = handleGenerateNode;
@@ -2515,7 +2679,7 @@ function InfiniteCanvasPage() {
                     onToggleAgent={() => (assistantOpen ? closeAgent() : openAgent())}
                 />
 
-                <InfiniteCanvas
+                <CanvasSurface
                     containerRef={containerRef}
                     viewport={viewport}
                     backgroundMode={backgroundMode}
@@ -2662,7 +2826,7 @@ function InfiniteCanvasPage() {
                         />
                     ) : null}
                     {pendingConnectionCreate ? <ConnectionCreateMenu pending={pendingConnectionCreate} onCreate={(type) => createConnectedNode(type, pendingConnectionCreate)} onClose={cancelPendingConnectionCreate} /> : null}
-                </InfiniteCanvas>
+                </CanvasSurface>
 
                 <CanvasNodeHoverToolbar
                     node={isNodeDragging || nodeImageSettingsOpen ? null : toolbarNode}
@@ -2702,6 +2866,7 @@ function InfiniteCanvasPage() {
                     onAddAudio={() => createNode(CanvasNodeType.Audio)}
                     onAddText={() => createNode(CanvasNodeType.Text)}
                     onAddConfig={() => createNode(CanvasNodeType.Config)}
+                    onGeneratePrompt={() => setPromptGeneratorOpen(true)}
                     onUndo={undoCanvas}
                     onRedo={redoCanvas}
                     onUpload={() => handleUploadRequest()}
@@ -2713,6 +2878,7 @@ function InfiniteCanvasPage() {
                     onOpenMyAssets={() => {
                         setAssetPickerOpen(true);
                     }}
+                    onOpenMonitor={() => setMonitorOpen(true)}
                 />
 
                 {isMiniMapOpen ? <Minimap nodes={nodes} viewport={viewport} viewportSize={size} onViewportChange={setViewport} /> : null}
@@ -2793,6 +2959,28 @@ function InfiniteCanvasPage() {
                 </Modal>
 
                 <AssetPickerModal open={assetPickerOpen} onInsert={handleAssetInsert} onClose={() => setAssetPickerOpen(false)} />
+                <GenerationMonitorModal open={monitorOpen} onClose={() => setMonitorOpen(false)} />
+                <Modal
+                    title="生成提示词"
+                    open={promptGeneratorOpen}
+                    centered
+                    okText="生成"
+                    cancelText="取消"
+                    confirmLoading={promptGenerating}
+                    onOk={() => void generatePromptNode()}
+                    onCancel={() => {
+                        if (promptGenerating) return;
+                        setPromptGeneratorOpen(false);
+                    }}
+                >
+                    <Input.TextArea
+                        autoFocus
+                        rows={5}
+                        value={promptGeneratorInput}
+                        onChange={(event) => setPromptGeneratorInput(event.target.value)}
+                        placeholder="例如：给这款除霉剂做一张高级感电商主图，突出清洁力和专业感"
+                    />
+                </Modal>
                 {codexCompactAgent && !assistantMounted ? <CanvasLocalAgentPanel headless snapshot={agentSnapshot} canUndoOps={Boolean(agentUndoSnapshot)} onApplyOps={applyAgentOps} onUndoOps={undoAgentOps} autoConnect={codexAutoConnect} /> : null}
             </section>
             {assistantMounted ? (
@@ -2883,7 +3071,6 @@ function CanvasTopBar({
                         menu={{
                             items: [
                                 { key: "home", icon: <Home className="size-4" />, label: "主页", onClick: onHome },
-                                { key: "docs", icon: <BookOpen className="size-4" />, label: "文档", onClick: () => window.open(DOCS_URL, "_blank", "noopener,noreferrer") },
                                 { key: "projects", icon: <Images className="size-4" />, label: "我的画布", onClick: onProjects },
                                 { type: "divider" },
                                 { key: "new", icon: <Plus className="size-4" />, label: "新建画布", onClick: onCreateProject },
@@ -3122,7 +3309,7 @@ async function hydrateAssistantImages(sessions: CanvasAssistantSession[]) {
 }
 
 function getGenerationCount(count: string) {
-    return Math.max(1, Math.min(15, Math.floor(Math.abs(Number(count)) || 1)));
+    return Math.max(1, Math.min(3, Math.floor(Math.abs(Number(count)) || 1)));
 }
 
 function applyNodeConfigPatch(node: CanvasNodeData, patch: Partial<CanvasNodeData["metadata"]>) {

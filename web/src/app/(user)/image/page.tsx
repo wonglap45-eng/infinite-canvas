@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, ArrowRight, BookOpen, CheckSquare, ClipboardPaste, Download, FolderPlus, History, ImagePlus, LoaderCircle, PenLine, Plus, SlidersHorizontal, Sparkles, Trash2, Upload } from "lucide-react";
+import { Activity, ArrowLeft, ArrowRight, BookOpen, CheckSquare, ClipboardPaste, Download, FolderPlus, History, ImagePlus, LoaderCircle, PenLine, Plus, SlidersHorizontal, Sparkles, Trash2, Upload } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { App, Button, Checkbox, Drawer, Empty, Image, Input, Modal, Tag, Tooltip, Typography } from "antd";
 import localforage from "localforage";
@@ -8,17 +8,22 @@ import { saveAs } from "file-saver";
 
 import { ImageSettingsPanel } from "@/components/image-settings-panel";
 import { ModelPicker } from "@/components/model-picker";
+import { EcommercePromptTemplateMenu } from "@/components/prompts/ecommerce-prompt-template-menu";
 import { PromptSelectDialog } from "@/components/prompts/prompt-select-dialog";
 import { AssetPickerModal, type InsertAssetPayload } from "@/app/(user)/canvas/components/asset-picker-modal";
+import { GenerationMonitorModal } from "@/components/generation/generation-monitor-modal";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { imageReferenceLabel } from "@/lib/image-reference-prompt";
+import { imageVariationPrompt } from "@/lib/image-variation-prompt";
 import { modelOptionLabel, useConfigStore, useEffectiveConfig, type AiConfig } from "@/stores/use-config-store";
+import { imageGenerationPreflightItems, normalizeImageGenerationCount, shouldConfirmImageGeneration, type PreflightItem } from "@/lib/generation-preflight";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { nanoid } from "nanoid";
 import { formatBytes, formatDuration, getDataUrlByteSize, readImageMeta } from "@/lib/image-utils";
 import { requestEdit, requestGeneration } from "@/services/api/image";
 import { deleteStoredImages, resolveImageUrl, uploadImage } from "@/services/image-storage";
 import { useAssetStore } from "@/stores/use-asset-store";
+import { useGenerationMonitorStore } from "@/stores/use-generation-monitor-store";
 import type { ReferenceImage } from "@/types/image";
 
 type GeneratedImage = {
@@ -63,12 +68,11 @@ type GenerationLogConfig = Pick<AiConfig, "model" | "imageModel" | "quality" | "
 
 type UpdateAiConfig = <K extends keyof AiConfig>(key: K, value: AiConfig[K]) => void;
 
-const LOG_STORE_KEY = "infinite-canvas:image_generation_logs";
+const LOG_STORE_KEY = "eons-ai-image-studio:image_generation_logs";
 const RESULT_ACTION_BUTTON_CLASS = "min-w-0 px-1.5 [&_.ant-btn-icon]:shrink-0 [&>span:last-child]:min-w-0 [&>span:last-child]:truncate";
-const logStore = localforage.createInstance({ name: "infinite-canvas", storeName: "image_generation_logs" });
-
+const logStore = localforage.createInstance({ name: "eons-ai-image-studio", storeName: "image_generation_logs" });
 export default function ImagePage() {
-    const { message } = App.useApp();
+    const { message, modal } = App.useApp();
     const fileInputRef = useRef<HTMLInputElement>(null);
     const config = useConfigStore((state) => state.config);
     const effectiveConfig = useEffectiveConfig();
@@ -76,6 +80,7 @@ export default function ImagePage() {
     const isAiConfigReady = useConfigStore((state) => state.isAiConfigReady);
     const openConfigDialog = useConfigStore((state) => state.openConfigDialog);
     const addAsset = useAssetStore((state) => state.addAsset);
+    const addMonitorEntry = useGenerationMonitorStore((state) => state.addEntry);
     const [prompt, setPrompt] = useState("");
     const [references, setReferences] = useState<ReferenceImage[]>([]);
     const [results, setResults] = useState<GenerationResult[]>([]);
@@ -83,6 +88,7 @@ export default function ImagePage() {
     const [running, setRunning] = useState(false);
     const [logsOpen, setLogsOpen] = useState(false);
     const [settingsOpen, setSettingsOpen] = useState(false);
+    const [monitorOpen, setMonitorOpen] = useState(false);
     const [promptDialogOpen, setPromptDialogOpen] = useState(false);
     const [assetPickerOpen, setAssetPickerOpen] = useState(false);
     const [startedAt, setStartedAt] = useState(0);
@@ -93,7 +99,7 @@ export default function ImagePage() {
 
     const model = effectiveConfig.imageModel || effectiveConfig.model;
     const canGenerate = Boolean(prompt.trim());
-    const generationCount = Math.max(1, Math.min(10, Number(config.count) || 1));
+    const generationCount = normalizeImageGenerationCount(config.count);
 
     useEffect(() => {
         if (!running || !startedAt) return;
@@ -151,7 +157,21 @@ export default function ImagePage() {
 
         const snapshot = buildRequestSnapshot();
         if (!snapshot) return;
+        const run = () => void runGenerationBatch(text, snapshot);
+        if (shouldConfirmImageGeneration({ count: generationCount, prompt: text, quality: effectiveConfig.quality, size: effectiveConfig.size, referenceCount: references.length })) {
+            modal.confirm({
+                title: "生成前确认",
+                content: <PreflightList items={imageGenerationPreflightItems({ ...effectiveConfig, model }, { count: generationCount, prompt: text, referenceCount: references.length })} />,
+                okText: "开始生成",
+                cancelText: "再检查一下",
+                onOk: run,
+            });
+            return;
+        }
+        run();
+    };
 
+    const runGenerationBatch = async (text: string, snapshot: { text: string; config: AiConfig; references: ReferenceImage[] }) => {
         setElapsedMs(0);
         setRunning(true);
         setPreviewLog(null);
@@ -159,13 +179,19 @@ export default function ImagePage() {
         const batchStartedAt = performance.now();
         setStartedAt(batchStartedAt);
 
-        const tasks = Array.from({ length: generationCount }, (_, index) => runGenerationSlot(index, snapshot));
-
-        const result = await Promise.allSettled(tasks);
+        const result: PromiseSettledResult<GeneratedImage>[] = [];
+        for (let index = 0; index < generationCount; index += 1) {
+            try {
+                result.push({ status: "fulfilled", value: await runGenerationSlot(index, snapshot) });
+            } catch (reason) {
+                result.push({ status: "rejected", reason });
+            }
+        }
         const successImages = result.filter((item): item is PromiseFulfilledResult<GeneratedImage> => item.status === "fulfilled").map((item) => item.value);
         const successCount = successImages.length;
         const failCount = generationCount - successCount;
         const failed = result.find((item): item is PromiseRejectedResult => item.status === "rejected");
+        const durationMs = performance.now() - batchStartedAt;
 
         try {
             const logImages = await Promise.all(
@@ -180,13 +206,27 @@ export default function ImagePage() {
                     model,
                     config: { ...snapshot.config, count: String(generationCount) },
                     references: snapshot.references,
-                    durationMs: performance.now() - batchStartedAt,
+                    durationMs,
                     successCount,
                     failCount,
                     status: successCount ? "成功" : "失败",
                     images: logImages,
                 }),
             );
+            addMonitorEntry({
+                scope: "image",
+                action: snapshot.references.length ? "edit" : "generate",
+                status: successCount ? "success" : "failed",
+                model,
+                count: generationCount,
+                successCount,
+                failCount,
+                referenceCount: snapshot.references.length,
+                promptPreview: text.slice(0, 220),
+                error: failed?.reason instanceof Error ? failed.reason.message : failCount ? "生成失败" : undefined,
+                durationMs,
+                config: snapshot.config,
+            });
             successCount ? message.success("图片已生成") : message.error(failed?.reason instanceof Error ? failed.reason.message : "生成失败");
         } finally {
             setRunning(false);
@@ -209,10 +249,10 @@ export default function ImagePage() {
             kind: "image",
             title: `生成结果 ${index + 1}`,
             coverUrl: stored.url,
-            tags: [],
+            tags: ["生图工作台", model].filter(Boolean),
             source: "生图工作台",
             data: { dataUrl: stored.url, storageKey: stored.storageKey, width: stored.width, height: stored.height, bytes: stored.bytes, mimeType: stored.mimeType },
-            metadata: { source: "image-page", prompt },
+            metadata: { source: "image-page", prompt, model, referenceCount: references.length },
         });
         message.success("已加入我的素材");
     };
@@ -285,7 +325,8 @@ export default function ImagePage() {
     const runGenerationSlot = async (index: number, snapshot: { text: string; config: AiConfig; references: ReferenceImage[] }) => {
         const itemStartedAt = performance.now();
         try {
-            const result = snapshot.references.length ? await requestEdit(snapshot.config, snapshot.text, snapshot.references) : await requestGeneration(snapshot.config, snapshot.text);
+            const variantPrompt = imageVariationPrompt(snapshot.text, index, generationCount, snapshot.references.length > 0);
+            const result = snapshot.references.length ? await requestEdit(snapshot.config, variantPrompt, snapshot.references) : await requestGeneration(snapshot.config, variantPrompt);
             const image = result[0];
             if (!image) throw new Error("接口没有返回图片");
             const meta = await readImageMeta(image.dataUrl);
@@ -329,6 +370,9 @@ export default function ImagePage() {
                                     <h1 className="text-2xl font-semibold text-stone-950 dark:text-stone-100">生图工作台</h1>
                                 </div>
                                 <div className="flex shrink-0 gap-2 lg:hidden">
+                                    <Button icon={<Activity className="size-4" />} onClick={() => setMonitorOpen(true)}>
+                                        监控
+                                    </Button>
                                     <Button icon={<History className="size-4" />} onClick={() => setLogsOpen(true)}>
                                         记录
                                     </Button>
@@ -344,11 +388,15 @@ export default function ImagePage() {
                                 <div className="mb-2 flex items-center justify-between gap-3">
                                     <span className="text-base font-semibold">提示词</span>
                                     <div className="flex gap-2">
+                                        <EcommercePromptTemplateMenu currentPrompt={prompt} onSelect={setPrompt} showText />
                                         <Button size="small" icon={<BookOpen className="size-3.5" />} onClick={() => setPromptDialogOpen(true)}>
                                             查看提示词库
                                         </Button>
                                         <Button size="small" icon={<FolderPlus className="size-3.5" />} onClick={() => setAssetPickerOpen(true)}>
                                             查看我的素材
+                                        </Button>
+                                        <Button size="small" icon={<Activity className="size-3.5" />} onClick={() => setMonitorOpen(true)}>
+                                            错误/成本
                                         </Button>
                                     </div>
                                 </div>
@@ -472,6 +520,7 @@ export default function ImagePage() {
             </Drawer>
             <PromptSelectDialog open={promptDialogOpen} onOpenChange={setPromptDialogOpen} onSelect={setPrompt} />
             <AssetPickerModal open={assetPickerOpen} defaultTab="my-assets" onInsert={(payload) => void insertPickedAsset(payload)} onClose={() => setAssetPickerOpen(false)} />
+            <GenerationMonitorModal open={monitorOpen} onClose={() => setMonitorOpen(false)} />
             <Modal title="删除生成记录" open={deleteConfirmOpen} onCancel={() => setDeleteConfirmOpen(false)} onOk={deleteSelectedLogs} okText="删除" okButtonProps={{ danger: true }} cancelText="取消">
                 确定删除选中的 {selectedLogIds.length} 条生成记录吗？
             </Modal>
@@ -489,10 +538,32 @@ function GenerationSettings({ config, model, updateConfig, openConfigDialog }: {
                 <ModelPicker config={config} value={model} onChange={(value) => updateConfig("imageModel", value)} capability="image" fullWidth onMissingConfig={() => openConfigDialog(false)} />
             </label>
             <div className="col-span-2">
-                <ImageSettingsPanel config={config} onConfigChange={(key, value) => updateConfig(key, value)} theme={theme} showTitle={false} className="space-y-4" maxCount={10} />
+                <ImageSettingsPanel config={config} onConfigChange={(key, value) => updateConfig(key, value)} theme={theme} showTitle={false} className="space-y-4" maxCount={3} quickCount={3} />
             </div>
         </>
     );
+}
+
+function PreflightList({ items }: { items: PreflightItem[] }) {
+    return (
+        <div className="space-y-2 text-sm">
+            <div>请确认本次生成设置，避免误消耗额度。</div>
+            <ul className="m-0 list-none space-y-1.5 p-0">
+                {items.map((item) => (
+                    <li key={`${item.label}-${item.value}`} className={preflightItemClass(item.level)}>
+                        <span className="shrink-0 font-medium">{item.label}：</span>
+                        <span>{item.value}</span>
+                    </li>
+                ))}
+            </ul>
+        </div>
+    );
+}
+
+function preflightItemClass(level: PreflightItem["level"]) {
+    if (level === "danger") return "flex gap-1.5 rounded-md bg-red-50 px-2 py-1 text-red-700";
+    if (level === "warning") return "flex gap-1.5 rounded-md bg-amber-50 px-2 py-1 text-amber-700";
+    return "flex gap-1.5 px-2 py-0.5 text-stone-700";
 }
 
 function ResultImageCard({

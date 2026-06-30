@@ -1,13 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ArrowUp, LoaderCircle, Square } from "lucide-react";
-import { Button } from "antd";
+import { App, Button } from "antd";
 
 import { ModelPicker } from "@/components/model-picker";
+import { EcommercePromptTemplateMenu } from "@/components/prompts/ecommerce-prompt-template-menu";
 import { defaultConfig, useConfigStore, useEffectiveConfig, type AiConfig } from "@/stores/use-config-store";
 import { CreditSymbol, requestCreditCost } from "@/constant/credits";
 import { canvasThemes } from "@/lib/canvas-theme";
+import { imageGenerationPreflightItems, normalizeImageGenerationCount, shouldConfirmImageGeneration, type PreflightItem } from "@/lib/generation-preflight";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { CanvasImageSettingsPopover } from "./canvas-image-settings-popover";
 import { CanvasPromptLibrary } from "./canvas-prompt-library";
@@ -31,6 +33,7 @@ type CanvasNodePromptPanelProps = {
 };
 
 export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfigChange, onGenerate, onStop, mentionReferences = [], onImageSettingsOpenChange }: CanvasNodePromptPanelProps) {
+    const { modal } = App.useApp();
     const globalConfig = useEffectiveConfig();
     const openConfigDialog = useConfigStore((state) => state.openConfigDialog);
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
@@ -39,12 +42,16 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
     const hasTextContent = node.type === CanvasNodeType.Text && Boolean(node.metadata?.content?.trim());
     const hasImageContent = node.type === CanvasNodeType.Image && Boolean(node.metadata?.content);
     const isEditingExistingContent = hasTextContent || hasImageContent;
-    const [prompt, setPrompt] = useState(isEditingExistingContent ? "" : node.metadata?.prompt || "");
-    const credits = requestCreditCost({ channelMode: config.channelMode, model: config.model, count: mode === "image" ? config.count : 1 });
+    const connectedPrompt = useMemo(() => buildConnectedPrompt(mentionReferences), [mentionReferences]);
+    const referenceImageCount = useMemo(() => (hasImageContent ? 1 : 0) + mentionReferences.filter((reference) => reference.active && reference.kind === "image" && reference.nodeId !== node.id).length, [hasImageContent, mentionReferences, node.id]);
+    const [prompt, setPrompt] = useState(initialPrompt(node, isEditingExistingContent, connectedPrompt));
+    const count = mode === "image" ? normalizeImageGenerationCount(config.count) : 1;
+    const credits = requestCreditCost({ channelMode: config.channelMode, model: config.model, count });
+    const canSubmit = Boolean(prompt.trim() || connectedPrompt.trim());
 
     useEffect(() => {
-        setPrompt(isEditingExistingContent ? "" : node.metadata?.prompt || "");
-    }, [isEditingExistingContent, node.id]);
+        setPrompt(initialPrompt(node, isEditingExistingContent, connectedPrompt));
+    }, [connectedPrompt, isEditingExistingContent, node.id, node.metadata?.prompt]);
 
     const updatePrompt = (value: string) => {
         setPrompt(value);
@@ -52,15 +59,28 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
     };
 
     const submit = () => {
-        const text = prompt.trim();
+        const text = prompt.trim() || connectedPrompt.trim();
         if (!text || isRunning) return;
-        onGenerate(node.id, mode, text);
-        setPrompt("");
+        const run = () => {
+            onGenerate(node.id, mode, text);
+            if (!isEditingExistingContent) setPrompt("");
+        };
+        if (mode === "image" && shouldConfirmImageGeneration({ count, prompt: text, quality: config.quality, size: config.size, referenceCount: referenceImageCount })) {
+            modal.confirm({
+                title: "生成前确认",
+                content: <PreflightList items={imageGenerationPreflightItems(config, { count, prompt: text, referenceCount: referenceImageCount })} />,
+                okText: "开始生成",
+                cancelText: "再检查一下",
+                onOk: run,
+            });
+            return;
+        }
+        run();
     };
 
     return (
         <div
-            className="rounded-2xl border p-3 shadow-2xl backdrop-blur"
+            className="rounded-2xl border p-4 shadow-2xl backdrop-blur"
             style={{ background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.node.text }}
             onMouseDown={(event) => event.stopPropagation()}
             onPointerDown={(event) => event.stopPropagation()}
@@ -71,13 +91,14 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
                 references={mentionReferences}
                 onChange={updatePrompt}
                 onSubmit={submit}
-                className="thin-scrollbar h-24 w-full resize-none rounded-xl border px-3 py-2 text-sm leading-5 outline-none"
+                className={`thin-scrollbar w-full resize-none rounded-xl border px-3 py-2 text-sm leading-6 outline-none ${hasImageContent ? "h-44" : "h-28"}`}
                 style={{ background: theme.node.fill, borderColor: theme.node.stroke, color: theme.node.text }}
                 placeholder={promptPlaceholder(mode, hasImageContent, hasTextContent)}
             />
 
-            <div className="mt-2 flex min-w-0 items-center justify-between gap-2">
-                <div className="flex min-w-0 items-center gap-2">
+            <div className="mt-3 flex min-w-0 flex-wrap items-center justify-between gap-2">
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                    <EcommercePromptTemplateMenu currentPrompt={prompt} onSelect={updatePrompt} buttonClassName="!h-8 !w-8 !min-w-8 shrink-0 !rounded-full !bg-transparent !p-0" />
                     <CanvasPromptLibrary onSelect={updatePrompt} />
                     {mode === "image" ? (
                         <>
@@ -107,9 +128,9 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
                 </div>
                 <Button
                     type="primary"
-                    className="!h-10 !min-w-16 shrink-0 !rounded-full !px-3"
+                    className="!h-10 !min-w-20 shrink-0 !rounded-full !px-4"
                     danger={isRunning}
-                    disabled={!isRunning && !prompt.trim()}
+                    disabled={!isRunning && !canSubmit}
                     onClick={() => (isRunning ? onStop(node.id) : submit())}
                     aria-label={isRunning ? "停止生成" : "生成"}
                 >
@@ -134,6 +155,40 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
             </div>
         </div>
     );
+}
+
+function PreflightList({ items }: { items: PreflightItem[] }) {
+    return (
+        <div className="space-y-2 text-sm">
+            <div>请确认本次生成设置，避免误消耗额度。</div>
+            <ul className="m-0 list-none space-y-1.5 p-0">
+                {items.map((item) => (
+                    <li key={`${item.label}-${item.value}`} className={preflightItemClass(item.level)}>
+                        <span className="shrink-0 font-medium">{item.label}：</span>
+                        <span>{item.value}</span>
+                    </li>
+                ))}
+            </ul>
+        </div>
+    );
+}
+
+function preflightItemClass(level: PreflightItem["level"]) {
+    if (level === "danger") return "flex gap-1.5 rounded-md bg-red-50 px-2 py-1 text-red-700";
+    if (level === "warning") return "flex gap-1.5 rounded-md bg-amber-50 px-2 py-1 text-amber-700";
+    return "flex gap-1.5 px-2 py-0.5 text-stone-700";
+}
+
+function initialPrompt(node: CanvasNodeData, isEditingExistingContent: boolean, connectedPrompt: string) {
+    return isEditingExistingContent ? connectedPrompt : node.metadata?.prompt || connectedPrompt;
+}
+
+function buildConnectedPrompt(references: CanvasResourceReference[]) {
+    return references
+        .filter((reference) => reference.active && reference.kind === "text")
+        .map((reference) => reference.text?.trim())
+        .filter((text): text is string => Boolean(text))
+        .join("\n\n");
 }
 
 function defaultMode(type: CanvasNodeData["type"]): CanvasNodeGenerationMode {

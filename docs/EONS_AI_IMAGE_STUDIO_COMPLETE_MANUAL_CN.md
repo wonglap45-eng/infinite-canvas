@@ -3,6 +3,9 @@
 版本：1.0  
 适用范围：公司内部团队  
 部署环境：Railway  
+Railway 项目显示名：EONS生图无限画布  
+Railway 服务名：eons-ai-image-studio  
+GitHub 仓库：wonglap45-eng/infinite-canvas  
 系统类型：AI 图片工作台
 
 ## 文档定位
@@ -17,6 +20,8 @@
 EONS AI Image Studio 是公司内部使用的 AI 图片工作台，支持无限画布、文生图、图生图、参考图编辑、局部编辑、提示词生成、提示词库、素材管理、图片下载、错误日志和成本估算。
 
 系统只供公司内部团队使用，不面向外部访客开放。员工不需要配置模型 API Key，所有模型 Key 由管理员在 Railway 环境变量中维护。
+
+Railway 后台当前项目显示名为 `EONS生图无限画布`，服务名为 `eons-ai-image-studio`，生产环境为 `production`。员工日常界面仍显示 `EONS AI Image Studio`。
 
 ## 快速开始
 
@@ -174,6 +179,13 @@ OPENAI_TEXT_MODELS=openai/gpt-5.5
 
 系统使用根目录 Dockerfile 部署到 Railway。Railway 会注入 `PORT`，服务监听 `0.0.0.0`。
 
+当前生产环境记录：
+
+- Railway 项目显示名：`EONS生图无限画布`
+- Railway 服务名：`eons-ai-image-studio`
+- GitHub 仓库：`wonglap45-eng/infinite-canvas`
+- 线上地址：`https://eons-ai-image-studio-production.up.railway.app`
+
 本地测试：
 
 ```bash
@@ -229,4 +241,3 @@ docker run --rm -p 3000:3000 eons-ai-image-studio
 - `/license` 可以访问。
 - API Key 未提交到 Git。
 - `ADMIN_PASSWORD` 使用强密码。
-

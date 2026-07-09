@@ -25,6 +25,16 @@ EONS AI Image Studio 是公司内部 AI 图片工作台，用于：
 
 当前项目部署在 Railway，使用根目录 Dockerfile 构建。
 
+当前生产环境记录：
+
+- Railway 项目显示名：`EONS生图无限画布`
+- Railway 服务名：`eons-ai-image-studio`
+- Railway 环境：`production`
+- GitHub 仓库：`wonglap45-eng/infinite-canvas`
+- 线上地址：`https://eons-ai-image-studio-production.up.railway.app`
+
+说明：Railway 项目显示名用于管理员在 Railway 后台识别项目；员工日常界面仍显示 `EONS AI Image Studio`。
+
 本地 Docker 测试命令：
 
 ```bash
@@ -75,7 +85,7 @@ ADMIN_PASSWORD=change-this-password
 
 在 Railway 中操作：
 
-1. 进入 Railway 项目。
+1. 进入 Railway 项目 `EONS生图无限画布`。
 2. 选择服务 `eons-ai-image-studio`。
 3. 进入 Variables。
 4. 设置：
@@ -297,4 +307,3 @@ auto/low：x 1
 - 前端看不到 API Key。
 - 生图和提示词生成正常。
 - `/license` 可访问。
-

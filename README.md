@@ -13,6 +13,16 @@ This first-stage branch only adapts deployment and basic internal branding. It d
 
 ## Railway Deployment
 
+Current Railway production information:
+
+- Project display name: `EONS生图无限画布`
+- Service name: `eons-ai-image-studio`
+- Environment: `production`
+- GitHub repository: `wonglap45-eng/infinite-canvas`
+- Production URL: `https://eons-ai-image-studio-production.up.railway.app`
+
+The Railway project display name is for administrator use only. The employee-facing product name remains `EONS AI Image Studio`.
+
 1. Create a private GitHub repository in your GitHub account or organization.
 2. Push this code to that private repository.
 3. Open Railway and create a new project.

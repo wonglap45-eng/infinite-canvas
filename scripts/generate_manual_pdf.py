@@ -383,6 +383,7 @@ def build_story():
             [Paragraph("版本", STYLES["CoverMeta"]), Paragraph("1.0", STYLES["CoverMeta"])],
             [Paragraph("适用范围", STYLES["CoverMeta"]), Paragraph("公司内部团队", STYLES["CoverMeta"])],
             [Paragraph("部署环境", STYLES["CoverMeta"]), Paragraph("Railway / Docker", STYLES["CoverMeta"])],
+            [Paragraph("Railway 项目", STYLES["CoverMeta"]), Paragraph("EONS生图无限画布", STYLES["CoverMeta"])],
             [Paragraph("文档类型", STYLES["CoverMeta"]), Paragraph("用户手册 + 管理员说明书", STYLES["CoverMeta"])],
         ],
         colWidths=[24 * mm, 70 * mm],
@@ -411,6 +412,7 @@ def build_story():
             "EONS AI Image Studio 是公司内部 AI 图片工作台，支持无限画布、文生图、图生图、参考图编辑、局部编辑、提示词生成、提示词库、素材管理、图片下载、错误日志和成本估算。员工不需要配置模型 API Key，所有模型 Key 由管理员在 Railway 环境变量中维护。"
         )
     )
+    story.append(para("Railway 后台当前项目显示名为 EONS生图无限画布，服务名为 eons-ai-image-studio，生产环境为 production。员工日常界面仍显示 EONS AI Image Studio。"))
     story.append(
         pill_table(
             [
@@ -519,6 +521,19 @@ def build_story():
 
     section(story, "08. 部署与维护")
     story.append(para("系统使用根目录 Dockerfile 部署到 Railway。Railway 会注入 PORT，服务监听 0.0.0.0。"))
+    story.append(
+        info_table(
+            [
+                ["项目", "当前生产环境记录"],
+                ["Railway 项目显示名", "EONS生图无限画布"],
+                ["Railway 服务名", "eons-ai-image-studio"],
+                ["Railway 环境", "production"],
+                ["GitHub 仓库", "wonglap45-eng/infinite-canvas"],
+                ["线上地址", "https://eons-ai-image-studio-production.up.railway.app"],
+            ],
+            [42 * mm, 114 * mm],
+        )
+    )
     story.append(code("docker build -t eons-ai-image-studio .\ndocker run --rm -p 3000:3000 eons-ai-image-studio"))
     story.append(bullets(["部署失败时优先检查 Dockerfile、PORT、启动命令和 Railway 构建日志。", "图片无法生成时优先检查图片模型 Key、Base URL、模型名和生成路径。", "提示词生成失败时优先检查文本模型 Key、Base URL 和模型权限。", "多人并发高时关注第三方 API 限流和 Railway 服务资源。"]))
 

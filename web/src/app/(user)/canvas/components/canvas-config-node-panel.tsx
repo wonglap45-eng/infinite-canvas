@@ -39,6 +39,7 @@ export function CanvasConfigNodePanel({ node, isRunning, inputSummary, onConfigC
     const hasComposerContent = Boolean((node.metadata?.composerContent ?? node.metadata?.prompt ?? "").trim());
     const canGenerate = hasComposerContent || (mode === "audio" ? inputSummary.textCount > 0 : hasAnyInput);
     const promptText = (node.metadata?.composerContent ?? node.metadata?.prompt ?? "").trim();
+    const usesVisionRouting = mode === "text" && inputSummary.imageCount > 0;
     const startGeneration = () => {
         if (isRunning) {
             onStop(node.id);
@@ -130,6 +131,11 @@ export function CanvasConfigNodePanel({ node, isRunning, inputSummary, onConfigC
                     <CanvasAudioSettingsPopover config={config} placement="topRight" buttonClassName="canvas-compact-control !h-10 !w-full !justify-start !rounded-lg !px-2" onConfigChange={(key, value) => onConfigChange(node.id, audioConfigPatch(key, value))} />
                 ) : null}
             </div>
+            {usesVisionRouting ? (
+                <div className="mb-2 rounded-md border px-2 py-1 text-[11px] leading-4" style={{ ...chipStyle, opacity: 0.82 }} title="前端仍显示文本模型；后端检测到参考图后会自动改用 Railway 配置的 OPENAI_VISION_MODEL。">
+                    含参考图的文本请求会自动转用视觉识图模型
+                </div>
+            ) : null}
 
             <Button
                 type="primary"

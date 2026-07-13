@@ -61,9 +61,9 @@ export type ModelCapability = "image" | "video" | "text" | "audio";
 const CHANNEL_MODEL_SEPARATOR = "::";
 const OPENAI_BASE_URL = "https://api.openai.com";
 const GEMINI_BASE_URL = "https://generativelanguage.googleapis.com";
-const OPENROUTER_MODEL_ALIASES: Record<string, string> = {
-    "gpt-image-2": "openai/gpt-image-2",
-    "gpt-5.5": "openai/gpt-5.5",
+const PROVIDER_MODEL_ALIASES: Record<string, string> = {
+    "openai/gpt-image-2": "gpt-image-2",
+    "openai/gpt-5.5": "gpt-5.5",
 };
 
 export const defaultConfig: AiConfig = {
@@ -78,13 +78,13 @@ export const defaultConfig: AiConfig = {
             baseUrl: "",
             apiKey: "",
             apiFormat: "openai",
-            models: ["openai/gpt-image-2", "openai/gpt-5.5", "grok-imagine-video", "gpt-4o-mini-tts"],
+            models: ["gpt-image-2", "gpt-5.5", "grok-imagine-video", "gpt-4o-mini-tts"],
         },
     ],
-    model: "default::openai/gpt-image-2",
-    imageModel: "default::openai/gpt-image-2",
+    model: "default::gpt-image-2",
+    imageModel: "default::gpt-image-2",
     videoModel: "default::grok-imagine-video",
-    textModel: "default::openai/gpt-5.5",
+    textModel: "default::gpt-5.5",
     audioModel: "default::gpt-4o-mini-tts",
     audioVoice: "alloy",
     audioFormat: "mp3",
@@ -95,10 +95,10 @@ export const defaultConfig: AiConfig = {
     videoGenerateAudio: "true",
     videoWatermark: "false",
     systemPrompt: "",
-    models: ["default::openai/gpt-image-2", "default::openai/gpt-5.5", "default::grok-imagine-video", "default::gpt-4o-mini-tts"],
-    imageModels: ["default::openai/gpt-image-2"],
+    models: ["default::gpt-image-2", "default::gpt-5.5", "default::grok-imagine-video", "default::gpt-4o-mini-tts"],
+    imageModels: ["default::gpt-image-2"],
     videoModels: ["default::grok-imagine-video"],
-    textModels: ["default::openai/gpt-5.5"],
+    textModels: ["default::gpt-5.5"],
     audioModels: ["default::gpt-4o-mini-tts"],
     quality: "auto",
     size: "1:1",
@@ -392,8 +392,8 @@ function uniqueModelOptions(models: string[]) {
 
 function normalizeModelAlias(model: string) {
     const decoded = decodeChannelModel(model);
-    if (decoded) return encodeChannelModel(decoded.channelId, OPENROUTER_MODEL_ALIASES[decoded.model] || decoded.model);
-    return OPENROUTER_MODEL_ALIASES[model] || model;
+    if (decoded) return encodeChannelModel(decoded.channelId, PROVIDER_MODEL_ALIASES[decoded.model] || decoded.model);
+    return PROVIDER_MODEL_ALIASES[model] || model;
 }
 
 export function buildApiUrl(baseUrl: string, path: string) {

@@ -120,13 +120,13 @@ OPENAI_API_KEY=
 OPENAI_BASE_URL=
 
 OPENAI_IMAGE_API_KEY=
-OPENAI_IMAGE_BASE_URL=https://openrouter.ai/api/v1
-OPENAI_IMAGE_MODELS=openai/gpt-image-2
-OPENAI_IMAGE_GENERATIONS_PATH=/images
+OPENAI_IMAGE_BASE_URL=
+OPENAI_IMAGE_MODELS=gpt-image-2
+OPENAI_IMAGE_GENERATIONS_PATH=/images/generations
 
 OPENAI_TEXT_API_KEY=
-OPENAI_TEXT_BASE_URL=https://openrouter.ai/api/v1
-OPENAI_TEXT_MODELS=openai/gpt-5.5
+OPENAI_TEXT_BASE_URL=
+OPENAI_TEXT_MODELS=gpt-5.5
 ```
 
 说明：
@@ -136,7 +136,7 @@ OPENAI_TEXT_MODELS=openai/gpt-5.5
   - `OPENAI_IMAGE_API_KEY` 用于图片模型。
   - `OPENAI_TEXT_API_KEY` 用于文本/提示词模型。
 - `OPENAI_IMAGE_MODELS` 和 `OPENAI_TEXT_MODELS` 用于模型路由。
-- OpenRouter 图片接口使用 `/images`，所以需要 `OPENAI_IMAGE_GENERATIONS_PATH=/images`。
+- 大多数 OpenAI 兼容图片接口使用 `/images/generations`；除非第三方文档明确要求其他路径，否则保持 `OPENAI_IMAGE_GENERATIONS_PATH=/images/generations`。
 
 不要把真实 API Key 写入：
 
@@ -223,7 +223,7 @@ auto/low：x 1
 普通尺寸：x 1
 ```
 
-真实费用请以 OpenRouter 或第三方平台账单为准。
+真实费用请以 Fossil 或当前第三方平台账单为准。
 
 ## 8. 常见故障排查
 

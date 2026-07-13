@@ -148,7 +148,7 @@ auto/low：x 1
 普通尺寸：x 1
 ```
 
-真实费用以 OpenRouter 或第三方平台账单为准。
+真实费用以 Fossil 或当前第三方平台账单为准。
 
 ## Railway 环境变量
 
@@ -164,13 +164,13 @@ OPENAI_API_KEY=
 OPENAI_BASE_URL=
 
 OPENAI_IMAGE_API_KEY=
-OPENAI_IMAGE_BASE_URL=https://openrouter.ai/api/v1
-OPENAI_IMAGE_MODELS=openai/gpt-image-2
-OPENAI_IMAGE_GENERATIONS_PATH=/images
+OPENAI_IMAGE_BASE_URL=
+OPENAI_IMAGE_MODELS=gpt-image-2
+OPENAI_IMAGE_GENERATIONS_PATH=/images/generations
 
 OPENAI_TEXT_API_KEY=
-OPENAI_TEXT_BASE_URL=https://openrouter.ai/api/v1
-OPENAI_TEXT_MODELS=openai/gpt-5.5
+OPENAI_TEXT_BASE_URL=
+OPENAI_TEXT_MODELS=gpt-5.5
 ```
 
 如果一个 API Key 无法访问多个模型，应分别设置图片模型 Key 和文本模型 Key。

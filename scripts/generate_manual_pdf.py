@@ -512,9 +512,9 @@ def build_story():
         code(
             "NODE_ENV=production\n\n"
             "OPENAI_API_KEY=\nOPENAI_BASE_URL=\n\n"
-            "OPENAI_IMAGE_API_KEY=\nOPENAI_IMAGE_BASE_URL=https://openrouter.ai/api/v1\n"
-            "OPENAI_IMAGE_MODELS=openai/gpt-image-2\nOPENAI_IMAGE_GENERATIONS_PATH=/images\n\n"
-            "OPENAI_TEXT_API_KEY=\nOPENAI_TEXT_BASE_URL=https://openrouter.ai/api/v1\nOPENAI_TEXT_MODELS=openai/gpt-5.5"
+            "OPENAI_IMAGE_API_KEY=\nOPENAI_IMAGE_BASE_URL=\n"
+            "OPENAI_IMAGE_MODELS=gpt-image-2\nOPENAI_IMAGE_GENERATIONS_PATH=/images/generations\n\n"
+            "OPENAI_TEXT_API_KEY=\nOPENAI_TEXT_BASE_URL=\nOPENAI_TEXT_MODELS=gpt-5.5"
         )
     )
     story.append(para("如果一个 API Key 无法访问多个模型，应分别设置图片模型 Key 和文本模型 Key。不要把真实 API Key 写入代码、README、.env.example 或前端本地存储。"))

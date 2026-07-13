@@ -65,20 +65,20 @@ OPENAI_API_KEY=
 OPENAI_BASE_URL=
 OPENAI_IMAGE_API_KEY=
 OPENAI_IMAGE_BASE_URL=
-OPENAI_IMAGE_MODELS=openai/gpt-image-2
-OPENAI_IMAGE_GENERATIONS_PATH=/images
+OPENAI_IMAGE_MODELS=gpt-image-2
+OPENAI_IMAGE_GENERATIONS_PATH=/images/generations
 OPENAI_TEXT_API_KEY=
 OPENAI_TEXT_BASE_URL=
-OPENAI_TEXT_MODELS=openai/gpt-5.5
+OPENAI_TEXT_MODELS=gpt-5.5
 ```
 
 `OPENAI_API_KEY` is the fallback key. If one provider token cannot access every model, set the model-specific keys instead:
 
-- `OPENAI_IMAGE_API_KEY` for image endpoints such as `openai/gpt-image-2`.
-- `OPENAI_TEXT_API_KEY` for text/prompt endpoints such as `openai/gpt-5.5`.
+- `OPENAI_IMAGE_API_KEY` for image endpoints such as `gpt-image-2`.
+- `OPENAI_TEXT_API_KEY` for text/prompt endpoints such as `gpt-5.5`.
 - `OPENAI_IMAGE_MODELS` and `OPENAI_TEXT_MODELS` are comma-separated model names used for routing.
 - The model-specific base URLs are optional; if omitted, `OPENAI_BASE_URL` is used.
-- OpenRouter image generation uses `/images`, so set `OPENAI_IMAGE_GENERATIONS_PATH=/images` when using `https://openrouter.ai/api/v1`.
+- Most OpenAI-compatible providers use `/images/generations`; set `OPENAI_IMAGE_GENERATIONS_PATH=/images/generations` unless your provider documents a different path.
 
 Do not place real API keys in source files or `.env.example`. Employees do not configure API keys in the browser.
 

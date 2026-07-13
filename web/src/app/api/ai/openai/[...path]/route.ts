@@ -10,12 +10,18 @@ type RouteContext = {
     params: Promise<{ path: string[] }>;
 };
 
-type UpstreamKind = "default" | "image" | "text" | "video" | "audio";
+type UpstreamKind = "default" | "image" | "text" | "vision" | "video" | "audio";
 
 type UpstreamTarget = {
     kind: UpstreamKind;
     apiKey: string;
     baseUrl: string;
+};
+
+type RequestPayloadInfo = {
+    model: string;
+    hasImageInput: boolean;
+    jsonBody?: Record<string, unknown>;
 };
 
 type AiJob =
@@ -50,13 +56,13 @@ function modelMatchesEnv(model: string, name: string) {
 }
 
 function kindApiKey(kind: UpstreamKind) {
-    const raw = kind === "default" ? envValue("OPENAI_API_KEY") : envValue(`OPENAI_${kind.toUpperCase()}_API_KEY`);
+    const raw = kind === "default" ? envValue("OPENAI_API_KEY") : kind === "vision" ? envValue("OPENAI_VISION_API_KEY") || envValue("OPENAI_TEXT_API_KEY") || envValue("OPENAI_API_KEY") : envValue(`OPENAI_${kind.toUpperCase()}_API_KEY`);
     if (/[^\x20-\x7e]/.test(raw)) return "";
     return PLACEHOLDER_KEY_VALUES.has(raw) ? "" : raw;
 }
 
 function kindBaseUrl(kind: UpstreamKind) {
-    return normalizeBaseUrl(kind === "default" ? envValue("OPENAI_BASE_URL") || DEFAULT_OPENAI_BASE_URL : envValue(`OPENAI_${kind.toUpperCase()}_BASE_URL`) || envValue("OPENAI_BASE_URL") || DEFAULT_OPENAI_BASE_URL);
+    return normalizeBaseUrl(kind === "default" ? envValue("OPENAI_BASE_URL") || DEFAULT_OPENAI_BASE_URL : kind === "vision" ? envValue("OPENAI_VISION_BASE_URL") || envValue("OPENAI_TEXT_BASE_URL") || envValue("OPENAI_BASE_URL") || DEFAULT_OPENAI_BASE_URL : envValue(`OPENAI_${kind.toUpperCase()}_BASE_URL`) || envValue("OPENAI_BASE_URL") || DEFAULT_OPENAI_BASE_URL);
 }
 
 function kindTarget(kind: UpstreamKind): UpstreamTarget {
@@ -72,10 +78,16 @@ function pathKind(path: string[]): UpstreamKind {
     return "default";
 }
 
-function resolveUpstreamTarget(path: string[], model: string): UpstreamTarget {
+function visionModel() {
+    return envValue("OPENAI_VISION_MODEL") || envModels("OPENAI_VISION_MODELS")[0] || "";
+}
+
+function resolveUpstreamTarget(path: string[], model: string, hasImageInput = false): UpstreamTarget {
+    if (hasImageInput && visionModel()) return kindTarget("vision");
     const modelRoutes: Array<{ kind: UpstreamKind; env: string }> = [
         { kind: "image", env: "OPENAI_IMAGE_MODELS" },
         { kind: "text", env: "OPENAI_TEXT_MODELS" },
+        { kind: "vision", env: "OPENAI_VISION_MODELS" },
         { kind: "video", env: "OPENAI_VIDEO_MODELS" },
         { kind: "audio", env: "OPENAI_AUDIO_MODELS" },
     ];
@@ -89,22 +101,30 @@ function resolveUpstreamTarget(path: string[], model: string): UpstreamTarget {
     return kindTarget("default");
 }
 
-async function requestModel(request: NextRequest) {
-    if (request.method === "GET" || request.method === "HEAD") return "";
+function isImageInputValue(value: unknown): boolean {
+    if (!value) return false;
+    if (Array.isArray(value)) return value.some(isImageInputValue);
+    if (typeof value !== "object") return false;
+    const record = value as Record<string, unknown>;
+    return record.type === "image_url" || record.type === "input_image" || isImageInputValue(record.content) || isImageInputValue(record.messages) || isImageInputValue(record.input);
+}
+
+async function requestPayloadInfo(request: NextRequest): Promise<RequestPayloadInfo> {
+    if (request.method === "GET" || request.method === "HEAD") return { model: "", hasImageInput: false };
     const contentType = request.headers.get("content-type") || "";
     try {
         if (contentType.includes("application/json")) {
-            const payload = (await request.clone().json()) as { model?: unknown };
-            return typeof payload.model === "string" ? payload.model : "";
+            const payload = (await request.clone().json()) as Record<string, unknown>;
+            return { model: typeof payload.model === "string" ? payload.model : "", hasImageInput: isImageInputValue(payload), jsonBody: payload };
         }
         if (contentType.includes("multipart/form-data")) {
             const model = (await request.clone().formData()).get("model");
-            return typeof model === "string" ? model : "";
+            return { model: typeof model === "string" ? model : "", hasImageInput: false };
         }
     } catch {
-        return "";
+        return { model: "", hasImageInput: false };
     }
-    return "";
+    return { model: "", hasImageInput: false };
 }
 
 function upstreamBaseUrl(target: UpstreamTarget) {
@@ -117,6 +137,8 @@ function endpointOverride(path: string[], target: UpstreamTarget) {
     const joined = `/${path.join("/")}`;
     if (target.kind === "image" && joined === "/images/generations") return envValue("OPENAI_IMAGE_GENERATIONS_PATH") || (target.baseUrl.includes("openrouter.ai") ? "/images" : joined);
     if (target.kind === "image" && joined === "/images/edits") return envValue("OPENAI_IMAGE_EDITS_PATH") || joined;
+    if (target.kind === "vision" && joined === "/chat/completions") return envValue("OPENAI_VISION_CHAT_PATH") || joined;
+    if (target.kind === "vision" && joined === "/responses") return envValue("OPENAI_VISION_RESPONSES_PATH") || joined;
     if (target.kind === "text" && joined === "/chat/completions") return envValue("OPENAI_TEXT_CHAT_PATH") || joined;
     if (target.kind === "text" && joined === "/responses") return envValue("OPENAI_TEXT_RESPONSES_PATH") || joined;
     return joined;
@@ -182,8 +204,21 @@ async function proxyOpenAI(request: NextRequest, context: RouteContext) {
             return jobResponse(path[1]);
         }
 
-        const model = await requestModel(request);
-        const target = resolveUpstreamTarget(path, model);
+        const payloadInfo = await requestPayloadInfo(request);
+        const targetModel = payloadInfo.hasImageInput && visionModel() && payloadInfo.jsonBody ? visionModel() : payloadInfo.model;
+        const target = resolveUpstreamTarget(path, targetModel, payloadInfo.hasImageInput);
+        if (payloadInfo.hasImageInput && envValue("OPENAI_REJECT_IMAGE_TEXT_WITHOUT_VISION").toLowerCase() === "true" && !visionModel() && target.kind === "text") {
+            return NextResponse.json(
+                {
+                    error: {
+                        code: "missing_vision_model",
+                        message: "当前反推图片需要视觉理解模型，但 Railway 尚未配置 OPENAI_VISION_MODEL / OPENAI_VISION_API_KEY。当前文本模型只能处理文字，不能可靠读取图片内容。",
+                    },
+                },
+                { status: 400 },
+            );
+        }
+        const model = targetModel;
         if (!target.apiKey) {
             return NextResponse.json(
                 {
@@ -198,7 +233,8 @@ async function proxyOpenAI(request: NextRequest, context: RouteContext) {
 
         const upstreamUrl = new URL(`${upstreamBaseUrl(target)}${endpointOverride(path, target)}`);
         upstreamUrl.search = request.nextUrl.search;
-        const body = request.method === "GET" || request.method === "HEAD" ? undefined : new Uint8Array(await request.arrayBuffer());
+        if (payloadInfo.hasImageInput && payloadInfo.jsonBody && model) payloadInfo.jsonBody.model = model;
+        const body = request.method === "GET" || request.method === "HEAD" ? undefined : payloadInfo.jsonBody ? new TextEncoder().encode(JSON.stringify(payloadInfo.jsonBody)) : new Uint8Array(await request.arrayBuffer());
         if (isAsyncImageRequest(request, path)) {
             cleanupJobs();
             const jobId = nanoid();

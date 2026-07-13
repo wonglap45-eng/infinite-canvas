@@ -514,10 +514,12 @@ def build_story():
             "OPENAI_API_KEY=\nOPENAI_BASE_URL=\n\n"
             "OPENAI_IMAGE_API_KEY=\nOPENAI_IMAGE_BASE_URL=\n"
             "OPENAI_IMAGE_MODELS=gpt-image-2\nOPENAI_IMAGE_GENERATIONS_PATH=/images/generations\n\n"
-            "OPENAI_TEXT_API_KEY=\nOPENAI_TEXT_BASE_URL=\nOPENAI_TEXT_MODELS=gpt-5.5"
+            "OPENAI_TEXT_API_KEY=\nOPENAI_TEXT_BASE_URL=\nOPENAI_TEXT_MODELS=gpt-5.5\n\n"
+            "OPENAI_VISION_API_KEY=\nOPENAI_VISION_BASE_URL=\nOPENAI_VISION_MODEL=\n"
+            "OPENAI_REJECT_IMAGE_TEXT_WITHOUT_VISION=true"
         )
     )
-    story.append(para("如果一个 API Key 无法访问多个模型，应分别设置图片模型 Key 和文本模型 Key。不要把真实 API Key 写入代码、README、.env.example 或前端本地存储。"))
+    story.append(para("如果一个 API Key 无法访问多个模型，应分别设置图片模型 Key、文本模型 Key 和视觉模型 Key。图片反推提示词需要视觉理解模型；如果没有配置 OPENAI_VISION_MODEL，系统会拒绝生成假反推结果。不要把真实 API Key 写入代码、README、.env.example 或前端本地存储。"))
 
     section(story, "08. 部署与维护")
     story.append(para("系统使用根目录 Dockerfile 部署到 Railway。Railway 会注入 PORT，服务监听 0.0.0.0。"))

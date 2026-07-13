@@ -1689,10 +1689,13 @@ function CanvasWorkspacePage() {
             const selectedImages = nodesRef.current.filter((node) => selectedNodeIdsRef.current.has(node.id) && node.type === CanvasNodeType.Image && node.metadata?.content).slice(0, 4);
             selectedImageCount = selectedImages.length;
             const imageParts = await Promise.all(
-                selectedImages.map(async (node) => ({
-                    type: "image_url" as const,
-                    image_url: { url: await imageToDataUrl({ dataUrl: node.metadata.content, storageKey: node.metadata.storageKey }) },
-                })),
+                selectedImages.map(async (node) => {
+                    const metadata = node.metadata;
+                    return {
+                        type: "image_url" as const,
+                        image_url: { url: await imageToDataUrl({ dataUrl: metadata?.content || "", storageKey: metadata?.storageKey }) },
+                    };
+                }),
             );
             const text =
                 "你是一名 Amazon 资深电商美工、产品摄影指导和高转化主图设计师。你的任务是把用户的简单中文需求改写成可直接用于 AI 图片生成模型的中文提示词。\n\n" +

@@ -127,6 +127,12 @@ OPENAI_IMAGE_GENERATIONS_PATH=/images/generations
 OPENAI_TEXT_API_KEY=
 OPENAI_TEXT_BASE_URL=
 OPENAI_TEXT_MODELS=gpt-5.5
+
+OPENAI_VISION_API_KEY=
+OPENAI_VISION_BASE_URL=
+OPENAI_VISION_MODEL=
+OPENAI_VISION_MODELS=
+OPENAI_REJECT_IMAGE_TEXT_WITHOUT_VISION=true
 ```
 
 说明：
@@ -136,6 +142,9 @@ OPENAI_TEXT_MODELS=gpt-5.5
   - `OPENAI_IMAGE_API_KEY` 用于图片模型。
   - `OPENAI_TEXT_API_KEY` 用于文本/提示词模型。
 - `OPENAI_IMAGE_MODELS` 和 `OPENAI_TEXT_MODELS` 用于模型路由。
+- `OPENAI_VISION_MODEL` 用于图片反推提示词、看图分析等视觉理解任务。
+- 如果视觉模型与文本模型使用同一个第三方账号，可以把 `OPENAI_VISION_API_KEY` 和 `OPENAI_VISION_BASE_URL` 设置成与文本模型相同的值。
+- `OPENAI_REJECT_IMAGE_TEXT_WITHOUT_VISION=true` 用于防止未配置视觉模型时生成“看似反推、实际没看图”的假结果。
 - 大多数 OpenAI 兼容图片接口使用 `/images/generations`；除非第三方文档明确要求其他路径，否则保持 `OPENAI_IMAGE_GENERATIONS_PATH=/images/generations`。
 
 不要把真实 API Key 写入：
@@ -254,6 +263,19 @@ auto/low：x 1
 - `OPENAI_TEXT_BASE_URL` 是否正确。
 - `OPENAI_TEXT_MODELS` 是否包含当前文本模型。
 - 第三方 key 是否有该模型权限。
+
+### 反推提示词无法正确看图
+
+原因：
+
+- 反推提示词需要视觉理解模型。
+- 当前 `gpt-5.5` 只能稳定处理文字，不能可靠读取上传图片内容。
+
+处理：
+
+- 配置支持看图的模型到 `OPENAI_VISION_MODEL`。
+- 设置对应的 `OPENAI_VISION_API_KEY` 和 `OPENAI_VISION_BASE_URL`。
+- 如果视觉模型与文本模型同平台同 key，可以复用同一个 key 和 base URL。
 
 ### 生成结果重复
 

@@ -70,6 +70,11 @@ OPENAI_IMAGE_GENERATIONS_PATH=/images/generations
 OPENAI_TEXT_API_KEY=
 OPENAI_TEXT_BASE_URL=
 OPENAI_TEXT_MODELS=gpt-5.5
+OPENAI_VISION_API_KEY=
+OPENAI_VISION_BASE_URL=
+OPENAI_VISION_MODEL=
+OPENAI_VISION_MODELS=
+OPENAI_REJECT_IMAGE_TEXT_WITHOUT_VISION=true
 ```
 
 `OPENAI_API_KEY` is the fallback key. If one provider token cannot access every model, set the model-specific keys instead:
@@ -77,6 +82,9 @@ OPENAI_TEXT_MODELS=gpt-5.5
 - `OPENAI_IMAGE_API_KEY` for image endpoints such as `gpt-image-2`.
 - `OPENAI_TEXT_API_KEY` for text/prompt endpoints such as `gpt-5.5`.
 - `OPENAI_IMAGE_MODELS` and `OPENAI_TEXT_MODELS` are comma-separated model names used for routing.
+- `OPENAI_VISION_MODEL` is required for image reverse-prompt analysis when the text model cannot read images.
+- If the vision provider uses the same key and base URL as text, `OPENAI_VISION_API_KEY` and `OPENAI_VISION_BASE_URL` may repeat the text values.
+- `OPENAI_REJECT_IMAGE_TEXT_WITHOUT_VISION=true` prevents fake reverse-prompt output when no vision model is configured.
 - The model-specific base URLs are optional; if omitted, `OPENAI_BASE_URL` is used.
 - Most OpenAI-compatible providers use `/images/generations`; set `OPENAI_IMAGE_GENERATIONS_PATH=/images/generations` unless your provider documents a different path.
 

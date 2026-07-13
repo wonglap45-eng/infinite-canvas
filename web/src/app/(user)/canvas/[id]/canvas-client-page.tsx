@@ -104,15 +104,18 @@ const NODE_STATUS_IDLE = "idle" as const;
 const NODE_STATUS_LOADING = "loading" as const;
 const NODE_STATUS_SUCCESS = "success" as const;
 const NODE_STATUS_ERROR = "error" as const;
-const IMAGE_PROMPT_REVERSE_PRESET = `请根据参考图片反推一段适合用于 AI 生图的提示词。
+const IMAGE_PROMPT_REVERSE_PRESET = `请根据参考图片反推出“这张图是如何被构建出来的”，生成一段可复用到其他产品上的 AI 生图提示词。
 
 要求：
 1. 只输出提示词正文，不要解释。
-2. 你是一名 Amazon 资深电商美工和产品摄影指导。
-3. 输出中文生图提示词，方便员工检查和修改，也要适合当前 Fossil/OpenAI 兼容图片模型直接使用。
-4. 保留参考图产品的品牌识别、包装比例、瓶型、颜色、标签位置和核心卖点，不要重绘成另一个产品。
-5. 明确构图、镜头、光线、材质、背景、商业用途和质量标准。
-6. 加入约束：不要额外文字、不要水印、不要扭曲 logo、不要虚构包装、不要不可读标签。`;
+2. 你是一名 Amazon 资深电商美工、产品摄影指导和商业视觉拆解师。
+3. 重点反推参考图片的画面结构，而不是复刻参考图里的具体产品。请拆解并迁移：主体数量与相对位置、主体占画面比例、前后层次、镜头角度、焦段感、构图方式、背景类型、光线方向、阴影、反光、材质质感、色彩氛围、道具关系、商业用途和质量标准。
+4. 输出必须写成“把用户上传的新产品作为唯一主体/核心主体，套用参考图的构图、光影、背景和商业视觉风格”的生图提示词，方便员工连接自己的产品参考图后生成相似结构的新图片。
+5. 不要要求保留参考图产品的品牌、文字、logo、瓶型、包装、标签、颜色或卖点；这些都应由用户后续上传的新产品参考图决定。
+6. 如果参考图是商品图，请反推出它的拍摄/设计方法，例如：白底主图、场景副图、A+ 详情图、近景材质图、套装陈列、功能氛围图、前景道具与背景虚化等。
+7. 输出中文提示词，语义要具体可执行，适合当前 Fossil/OpenAI 兼容图片模型直接使用。
+8. 输出必须是自包含提示词，不要写“和参考图一样”“如图所示”“参考上图”等依赖原图才能理解的表达。
+9. 加入约束：不要额外文字、不要水印、不要复制参考图品牌、不要复制参考图包装文字、不要虚构新产品不存在的标签信息、不要改变用户新产品的外观。`;
 function createCanvasNode(type: CanvasNodeType, position: Position, metadata?: CanvasNodeMetadata): CanvasNodeData {
     const spec = getNodeSpec(type);
     const id = `${type}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;

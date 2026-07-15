@@ -188,6 +188,44 @@ function parseImageDimensions(value: string) {
     return { width: Number(match[1]), height: Number(match[2]) };
 }
 
+async function normalizeGeneratedImagesToSize(images: Array<{ id: string; dataUrl: string }>, requestSize: string | undefined) {
+    const dimensions = requestSize ? parseImageDimensions(requestSize) : null;
+    if (!dimensions) return images;
+    return Promise.all(
+        images.map(async (image) => {
+            try {
+                const normalizedDataUrl = await fitImageToExactCanvas(await imageToDataUrl({ dataUrl: image.dataUrl }), dimensions.width, dimensions.height);
+                return { ...image, dataUrl: normalizedDataUrl };
+            } catch {
+                return image;
+            }
+        }),
+    );
+}
+
+async function fitImageToExactCanvas(dataUrl: string, width: number, height: number) {
+    const source = await loadImageElement(dataUrl);
+    const sourceWidth = source.naturalWidth || source.width || width;
+    const sourceHeight = source.naturalHeight || source.height || height;
+    if (sourceWidth === width && sourceHeight === height) return dataUrl;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d");
+    if (!context) return dataUrl;
+
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, width, height);
+    const scale = Math.min(width / sourceWidth, height / sourceHeight);
+    const drawWidth = Math.round(sourceWidth * scale);
+    const drawHeight = Math.round(sourceHeight * scale);
+    const left = Math.round((width - drawWidth) / 2);
+    const top = Math.round((height - drawHeight) / 2);
+    context.drawImage(source, left, top, drawWidth, drawHeight);
+    return canvas.toDataURL("image/png");
+}
+
 function validateImageSize(width: number, height: number) {
     if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0) throw new Error("图像尺寸必须是正整数，例如 1024x1024");
     if (width % IMAGE_SIZE_STEP !== 0 || height % IMAGE_SIZE_STEP !== 0) throw new Error("图像尺寸的宽高必须是 16 的倍数，请调整尺寸");
@@ -999,15 +1037,15 @@ function parseGeminiImagePayload(payload: GeminiPayload) {
 export async function requestGeneration(config: AiConfig, prompt: string, options?: RequestOptions) {
     const requestConfig = resolveModelRequestConfig(config, config.model || config.imageModel);
     const n = Math.max(1, Math.min(3, Math.floor(Math.abs(Number(config.count)) || 1)));
+    const quality = normalizeQuality(config.quality);
+    const requestSize = resolveRequestSize(quality, config.size);
     if (requestConfig.apiFormat === "gemini") {
         try {
-            return await requestGeminiImages(requestConfig, prompt, [], n, options);
+            return await normalizeGeneratedImagesToSize(await requestGeminiImages(requestConfig, prompt, [], n, options), requestSize);
         } catch (error) {
             throw new Error(readAxiosError(error, "请求失败"));
         }
     }
-    const quality = normalizeQuality(config.quality);
-    const requestSize = resolveRequestSize(quality, config.size);
     const usesUrlResponse = isUrlImageModel(requestConfig.model);
     try {
         const payload = {
@@ -1020,7 +1058,7 @@ export async function requestGeneration(config: AiConfig, prompt: string, option
         };
         const data = usesUrlResponse ? await postAsyncImageJson(requestConfig, "/images/generations", payload, options) : (await axios.post<ImageApiResponse>(aiApiUrl(requestConfig, "/images/generations"), payload, { headers: aiHeaders(requestConfig, "application/json"), signal: options?.signal })).data;
         const images = parseImagePayload(data);
-        return images;
+        return await normalizeGeneratedImagesToSize(images, requestSize);
     } catch (error) {
         throw new Error(readAxiosError(error, "请求失败"));
     }
@@ -1032,21 +1070,21 @@ export async function requestEdit(config: AiConfig, prompt: string, references: 
     const requestPrompt = buildImageReferencePromptText(prompt, references);
     const maskReferencePrompt = mask ? buildMaskReferencePrompt(requestPrompt, references.length) : requestPrompt;
     const referencesWithMask = mask ? [...references, mask] : references;
+    const quality = normalizeQuality(config.quality);
+    const requestSize = resolveRequestSize(quality, config.size);
     if (requestConfig.apiFormat === "gemini") {
         try {
-            return await requestGeminiImages(requestConfig, maskReferencePrompt, referencesWithMask, n, options);
+            return await normalizeGeneratedImagesToSize(await requestGeminiImages(requestConfig, maskReferencePrompt, referencesWithMask, n, options), requestSize);
         } catch (error) {
             throw new Error(readAxiosError(error, "请求失败"));
         }
     }
-    const quality = normalizeQuality(config.quality);
-    const requestSize = resolveRequestSize(quality, config.size);
     const usesUrlResponse = isUrlImageModel(requestConfig.model);
     if (usesUrlResponse) {
         let multipartError: unknown;
         try {
             const images = parseImagePayload(await postAsyncImageForm(requestConfig, "/images/edits", await buildImageEditFormData(requestConfig, requestPrompt, references, mask, quality, requestSize, 1), options));
-            return images;
+            return await normalizeGeneratedImagesToSize(images, requestSize);
         } catch (error) {
             multipartError = error;
             if (!isRecoverableImageParameterError(error)) {
@@ -1054,7 +1092,7 @@ export async function requestEdit(config: AiConfig, prompt: string, references: 
             }
         }
         try {
-            return await requestUrlImageEdit(requestConfig, maskReferencePrompt, references, mask, requestSize, options);
+            return await normalizeGeneratedImagesToSize(await requestUrlImageEdit(requestConfig, maskReferencePrompt, references, mask, requestSize, options), requestSize);
         } catch (error) {
             if (multipartError && !isRecoverableImageParameterError(error)) throw new Error(readAxiosError(error, "请求失败"));
             throw new Error(readAxiosError(error, "请求失败"));
@@ -1066,7 +1104,7 @@ export async function requestEdit(config: AiConfig, prompt: string, references: 
     try {
         const response = await axios.post<ImageApiResponse>(aiApiUrl(requestConfig, "/images/edits"), formData, { headers: aiHeaders(requestConfig), signal: options?.signal });
         const images = parseImagePayload(response.data);
-        return images;
+        return await normalizeGeneratedImagesToSize(images, requestSize);
     } catch (error) {
         throw new Error(readAxiosError(error, "请求失败"));
     }

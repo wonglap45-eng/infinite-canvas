@@ -334,6 +334,24 @@ async function postAsyncImageJson(config: AiConfig, path: string, payload: Recor
     return pollAsyncImageJob(config, started.jobId, options);
 }
 
+async function postAsyncImageForm(config: AiConfig, path: string, formData: FormData, options?: RequestOptions) {
+    let startResponse: Response;
+    try {
+        startResponse = await fetch(aiApiUrl(config, path), {
+            method: "POST",
+            headers: { "x-eons-async": "1" },
+            body: formData,
+            signal: options?.signal,
+        });
+    } catch (error) {
+        throw new Error(readFetchException(error, "图片任务启动失败"));
+    }
+    if (!startResponse.ok && startResponse.status !== 202) throw new Error(await readFetchError(startResponse, "请求失败"));
+    const started = (await startResponse.json()) as AsyncImageJobStart;
+    if (!started.jobId) throw new Error(started.error || "图片任务启动失败");
+    return pollAsyncImageJob(config, started.jobId, options);
+}
+
 async function pollAsyncImageJob(config: AiConfig, jobId: string, options?: RequestOptions) {
     let failedPolls = 0;
     for (;;) {
@@ -1025,30 +1043,25 @@ export async function requestEdit(config: AiConfig, prompt: string, references: 
     const requestSize = resolveRequestSize(quality, config.size);
     const usesUrlResponse = isUrlImageModel(requestConfig.model);
     if (usesUrlResponse) {
+        let multipartError: unknown;
+        try {
+            const images = parseImagePayload(await postAsyncImageForm(requestConfig, "/images/edits", await buildImageEditFormData(requestConfig, requestPrompt, references, mask, quality, requestSize, 1), options));
+            return images;
+        } catch (error) {
+            multipartError = error;
+            if (!isRecoverableImageParameterError(error)) {
+                throw new Error(readAxiosError(error, "请求失败"));
+            }
+        }
         try {
             return await requestUrlImageEdit(requestConfig, maskReferencePrompt, references, mask, requestSize, options);
         } catch (error) {
+            if (multipartError && !isRecoverableImageParameterError(error)) throw new Error(readAxiosError(error, "请求失败"));
             throw new Error(readAxiosError(error, "请求失败"));
         }
     }
 
-    const formData = new FormData();
-    formData.set("model", requestConfig.model);
-    formData.set("prompt", withSystemPrompt(requestConfig, requestPrompt));
-    formData.set("n", String(usesUrlResponse ? 1 : n));
-    if (!usesUrlResponse) {
-        formData.set("response_format", "b64_json");
-        formData.set("output_format", IMAGE_OUTPUT_FORMAT);
-    }
-    if (!usesUrlResponse && quality) {
-        formData.set("quality", quality);
-    }
-    if (requestSize) {
-        formData.set("size", requestSize);
-    }
-    const files = await Promise.all(references.map(async (image) => dataUrlToFile({ ...image, dataUrl: await imageToDataUrl(image) })));
-    files.forEach((file) => formData.append("image", file));
-    if (mask) formData.set("mask", dataUrlToFile(mask));
+    const formData = await buildImageEditFormData(requestConfig, requestPrompt, references, mask, quality, requestSize, n);
 
     try {
         const response = await axios.post<ImageApiResponse>(aiApiUrl(requestConfig, "/images/edits"), formData, { headers: aiHeaders(requestConfig), signal: options?.signal });
@@ -1057,6 +1070,21 @@ export async function requestEdit(config: AiConfig, prompt: string, references: 
     } catch (error) {
         throw new Error(readAxiosError(error, "请求失败"));
     }
+}
+
+async function buildImageEditFormData(config: AiConfig, prompt: string, references: ReferenceImage[], mask: ReferenceImage | undefined, quality: string | undefined, requestSize: string | undefined, count: number) {
+    const formData = new FormData();
+    formData.set("model", config.model);
+    formData.set("prompt", withSystemPrompt(config, prompt));
+    formData.set("n", String(count));
+    formData.set("response_format", "b64_json");
+    formData.set("output_format", IMAGE_OUTPUT_FORMAT);
+    if (quality) formData.set("quality", quality);
+    if (requestSize) formData.set("size", requestSize);
+    const files = await Promise.all(references.map(async (image) => dataUrlToFile({ ...image, dataUrl: await imageToDataUrl(image) })));
+    files.forEach((file) => formData.append("image", file));
+    if (mask) formData.set("mask", dataUrlToFile(mask));
+    return formData;
 }
 
 function buildMaskReferencePrompt(prompt: string, referenceCount: number) {

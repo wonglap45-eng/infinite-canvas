@@ -64,7 +64,7 @@ function getDownstreamResourceNodes(nodeId: string, nodes: CanvasNodeData[], con
     return connections
         .filter((connection) => connection.fromNodeId === nodeId)
         .map((connection) => nodes.find((node) => node.id === connection.toNodeId))
-        .filter((node): node is CanvasNodeData => Boolean(node && node.type === CanvasNodeType.Image && node.metadata?.content && !node.metadata?.generationType));
+        .filter((node): node is CanvasNodeData => Boolean(node && node.type === CanvasNodeType.Image && node.metadata?.content));
 }
 
 function labelResourceNodes(nodes: CanvasNodeData[], active: boolean) {

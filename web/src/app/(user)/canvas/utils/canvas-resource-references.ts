@@ -40,6 +40,8 @@ export function getGenerationResourceNodes(nodeId: string, nodes: CanvasNodeData
     if (configInputs.length) return configInputs;
     const ownInputs = getContextResourceNodes(nodeId, nodes, connections);
     if (ownInputs.length) return ownInputs;
+    const downstreamInputs = getDownstreamResourceNodes(nodeId, nodes, connections);
+    if (downstreamInputs.length) return downstreamInputs;
     return [];
 }
 
@@ -54,6 +56,15 @@ function getConnectedConfigResourceNodes(nodeId: string, nodes: CanvasNodeData[]
     const configConnection = connections.find((connection) => connection.fromNodeId === nodeId && nodes.find((node) => node.id === connection.toNodeId)?.type === CanvasNodeType.Config);
     if (!configConnection) return [];
     return getContextResourceNodes(configConnection.toNodeId, nodes, connections).filter((node) => node.id !== nodeId);
+}
+
+function getDownstreamResourceNodes(nodeId: string, nodes: CanvasNodeData[], connections: CanvasConnection[]) {
+    const source = nodes.find((node) => node.id === nodeId);
+    if (source?.type !== CanvasNodeType.Text) return [];
+    return connections
+        .filter((connection) => connection.fromNodeId === nodeId)
+        .map((connection) => nodes.find((node) => node.id === connection.toNodeId))
+        .filter((node): node is CanvasNodeData => Boolean(node && node.type === CanvasNodeType.Image && node.metadata?.content && !node.metadata?.generationType));
 }
 
 function labelResourceNodes(nodes: CanvasNodeData[], active: boolean) {

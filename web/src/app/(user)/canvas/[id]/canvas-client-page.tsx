@@ -178,6 +178,79 @@ const IMAGE_PROMPT_REVERSE_PRESET_V2 = `请基于参考图片做一次“商业�
 给出 5 个同一视觉体系下的中文提示词，分别偏向不同方向，例如：原图结构复刻版、极简高端版、功能卖点版、材质近景版、A+ 详情版。每个提示词必须是独立完整的中文生图提示词，必须强调“以用户上传的新产品图作为唯一产品主体”，必须包含文字区域应该如何写：标题区写产品核心身份，副标题写一句利益点，底部/侧边卖点区写 3 个短卖点和简短说明；同时要求不要复制参考图原文案、品牌或具体产品名。每个提示词必须使用【可连线提示词N｜标题】标记开头。`;
 
 const REVERSE_PROMPT_NODE_MARKER = "【可连线提示词";
+type ReversePromptMode = "main" | "secondary";
+
+function buildImagePromptReversePreset(mode: ReversePromptMode) {
+    const modeRule =
+        mode === "main"
+            ? `本次反推用途：主图。
+主图硬性规则：
+1. 最终 5 个可连线提示词全部必须用于 Amazon/电商主图。
+2. 背景必须是纯白色或接近纯白色，不能使用彩色背景、渐变背景、场景背景、植物背景、烟雾背景、液体背景、科技背景或生活方式背景。
+3. 产品必须是唯一绝对主体，居中或轻微偏中，画面干净，主体占画面约 75%-90%。
+4. 不要出现额外道具、人物、手、桌面、装饰物、虚构配件、夸张光效、复杂图标或大段说明文字。
+5. 可以保留产品包装上本来存在的文字、logo 和标签，但不要额外生成新的营销文字。
+6. 五个提示词必须在白底主图规则内做明显差异：正面居中主图、轻微 3/4 角度主图、套装/组合陈列主图、标签清晰细节强化主图、带轻微阴影和留白的高级主图。`
+            : `本次反推用途：副图。
+副图规则：
+1. 允许基于参考图迁移构图、氛围、卖点表达、背景、光线和商业视觉风格。
+2. 五个提示词必须生成五种明显不同的副图方向，不能只是同一段提示词轻微换词。
+3. 五个方向必须分别覆盖：场景生活方式图、成分/功效氛围图、功能卖点信息图、材质/质感近景图、A+ 详情页横幅或品牌故事图。
+4. 每个提示词都必须说明不同的背景、构图、文字区域、视觉重点和用途，让生成出来的五张图一眼就能看出不是同一模板。`;
+
+    const promptTopics =
+        mode === "main"
+            ? "主图正面居中版、主图轻微 3/4 角度版、主图套装陈列版、主图标签清晰版、主图高级留白版"
+            : "场景生活方式版、成分功效氛围版、功能卖点信息图版、材质质感近景版、A+ 详情页横幅版";
+
+    return `请基于参考图片做一次“商业视觉反推拆解”，输出必须是中文，目标是让员工把这个结构迁移到自己的产品图上，生成类似构图、类似质感、类似商业表达的新图片。
+
+${modeRule}
+
+你的身份：
+你是一名 Amazon 资深电商美工、产品摄影指导、商业视觉拆解师和 AI 生图提示词工程师。你需要像专业设计复盘一样，把图片到底是如何构建出来的讲清楚。
+
+核心原则：
+1. 参考图只用于分析构图、版式、图层、背景、光线、色彩、镜头和商业表达，不要要求复制参考图里的品牌、logo、包装文字、具体卖点或产品身份。
+2. 最终提示词必须写成“以用户后续上传的新产品图作为唯一产品主体”，新产品图决定品牌、瓶型、包装比例、标签位置、颜色和真实外观。
+3. 可以识别参考图文字，但必须标注为“参考图可见文字/原图文案结构”，不能要求新图继续使用同一产品名、同一品牌名或同一文案。
+4. 必须专门拆解文字信息：如果文字清晰可见，请列出参考图中可见的标题、副标题、图标下卖点标题和说明文字；同时说明字体风格、大小层级、大小写、对齐方式、字距、行距、颜色和位置。如果文字无法完全识别，请说明“部分文字不可读”，不要编造。
+5. 五个可连线提示词必须互相差异明显，不能复用同一段结构后只替换少量形容词；每个提示词都要有不同的构图策略、背景策略、文字策略和视觉重点。
+6. 输出不要寒暄，不要写“你好”，不要说废话。
+
+请严格按以下结构输出：
+
+一、画面定位
+说明参考图属于什么商业图类型、用途和消费者感受。
+
+二、图片是如何构成的
+分层拆解背景层、主体产品层、文字/信息区、装饰元素、道具、阴影、反光、前后景关系；明确主体数量、主体位置、主体占画面比例、留白比例、画面重心和层级关系。
+
+三、文字与信息文案结构
+逐项列出参考图可见文字，并说明这些文字分别属于主标题、副标题、功能卖点标题、功能说明、辅助标签还是图标说明。分析文案写法，并说明新产品图中应该如何替换成新产品自己的文案。
+
+四、视觉动线
+说明用户视线从哪里进入，经过哪些标题、主体、装饰线条、功能信息，最后停在哪里。
+
+五、版面比例
+说明整体画幅比例、主体区域比例、文字区比例、背景/留白比例、左右/上下分区方式。
+
+六、配色、光线和材质
+拆解主色、辅助色、背景色、高光色、文字色、主光方向、阴影、反光、材质表现和真实摄影/3D 渲染感。
+
+七、优点、不足和可迁移公式
+说明值得迁移的地方、不建议迁移的地方，并用一句公式总结可迁移方法。
+
+八、5 个可连线提示词
+必须输出 5 个独立完整的中文生图提示词，方向分别是：${promptTopics}。
+每个提示词必须用固定标记开头：
+【可连线提示词1｜标题】
+提示词正文
+【可连线提示词2｜标题】
+提示词正文
+一直到【可连线提示词5｜标题】。
+每个提示词都必须强调“以用户上传的新产品图作为唯一产品主体”，必须说明文字区域应该怎么写；不能复制参考图原文案、品牌或具体产品名。`;
+}
 
 function isReversePromptRequest(prompt: string) {
     return prompt.includes("商业视觉反推拆解") && prompt.includes(REVERSE_PROMPT_NODE_MARKER);
@@ -1696,12 +1769,13 @@ function CanvasWorkspacePage() {
     );
 
     const createImageReversePromptNodes = useCallback(
-        (node: CanvasNodeData) => {
+        (node: CanvasNodeData, mode: ReversePromptMode) => {
             if (node.type !== CanvasNodeType.Image || !node.metadata?.content) {
                 message.warning("图片节点为空，无法反推提示词");
                 return;
             }
 
+            const reversePrompt = buildImagePromptReversePreset(mode);
             const gap = 96;
             const textSpec = NODE_DEFAULT_SIZE[CanvasNodeType.Text];
             const configSpec = NODE_DEFAULT_SIZE[CanvasNodeType.Config];
@@ -1710,9 +1784,9 @@ function CanvasWorkspacePage() {
                 ...createCanvasNode(
                     CanvasNodeType.Text,
                     { x: node.position.x + node.width + gap + textSpec.width / 2, y: centerY },
-                    { content: IMAGE_PROMPT_REVERSE_PRESET_V2, prompt: IMAGE_PROMPT_REVERSE_PRESET_V2, status: NODE_STATUS_SUCCESS, fontSize: 14 },
+                    { content: reversePrompt, prompt: reversePrompt, status: NODE_STATUS_SUCCESS, fontSize: 14 },
                 ),
-                title: "反推提示词",
+                title: mode === "main" ? "主图反推提示词" : "副图反推提示词",
             };
             const configNode = {
                 ...createCanvasNode(
@@ -1740,6 +1814,30 @@ function CanvasWorkspacePage() {
             setContextMenu(null);
         },
         [effectiveConfig.model, effectiveConfig.textModel, message],
+    );
+
+    const chooseImageReversePromptMode = useCallback(
+        (node: CanvasNodeData) => {
+            if (node.type !== CanvasNodeType.Image || !node.metadata?.content) {
+                message.warning("图片节点为空，无法反推提示词");
+                return;
+            }
+            modal.confirm({
+                title: "选择反推用途",
+                content: (
+                    <div className="space-y-2 text-sm leading-relaxed">
+                        <p>主图：生成 5 个白底主图方向，产品背景固定白色，不加场景和复杂装饰。</p>
+                        <p>副图：生成 5 个差异明显的副图方向，例如场景、成分氛围、功能卖点、材质近景和 A+ 横幅。</p>
+                    </div>
+                ),
+                okText: "主图",
+                cancelText: "副图",
+                maskClosable: false,
+                onOk: () => createImageReversePromptNodes(node, "main"),
+                onCancel: () => createImageReversePromptNodes(node, "secondary"),
+            });
+        },
+        [createImageReversePromptNodes, message, modal],
     );
 
     const createGeneratedPromptNode = useCallback(
@@ -2981,7 +3079,7 @@ function CanvasWorkspacePage() {
                     onSuperResolve={(node) => setSuperResolveNodeId(node.id)}
                     onAngle={(node) => setAngleNodeId(node.id)}
                     onViewImage={(node) => setPreviewNodeId(node.id)}
-                    onReversePrompt={createImageReversePromptNodes}
+                    onReversePrompt={chooseImageReversePromptMode}
                     onRetry={(node) => void handleRetryNode(node)}
                     onToggleFreeResize={(node) => toggleNodeFreeResize(node.id)}
                     onDelete={(node) => deleteNodes(new Set([node.id]))}

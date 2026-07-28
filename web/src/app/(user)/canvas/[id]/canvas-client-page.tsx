@@ -187,86 +187,32 @@ function buildImagePromptReversePreset(mode: ReversePromptMode) {
     const modeRule =
         mode === "main"
             ? `本次反推用途：主图。
-主图硬性规则：
-1. 最终 5 个可连线提示词全部必须用于 Amazon/电商主图。
-2. 背景必须是纯白色或接近纯白色，不能使用彩色背景、渐变背景、场景背景、植物背景、烟雾背景、液体背景、科技背景或生活方式背景。
-3. 产品必须是唯一绝对主体，居中或轻微偏中，画面干净，主体占画面约 75%-90%。
-4. 不要出现人物、手、桌面、生活场景、虚构配件、夸张光效或大段说明文字。
-5. 可以保留产品包装上本来存在的文字、logo 和标签，但不要额外生成新的营销文字。
-6. 五个提示词必须在白底主图规则内，由你根据当前参考图的真实结构独立发散。白底、主体真实、标签清晰、主体占比、阴影和光影只是共性约束，不能当作五个方案的差异点。
-7. 五个方案必须像五张不同设计稿：每张都要选择参考图中不同的可迁移视觉机制，例如信息区组织、局部纹理、线条路径、图标/符号秩序、材质表现、包装侧面露出、留白节奏、局部特写关系等。具体选择必须由你根据当前参考图判断，不要套用预设方向。`
+只固定白色或接近白色背景，以及用户产品本身不能被改造。其他构图、层次、文字组织和视觉元素都必须依据当前参考图判断。`
             : `本次反推用途：副图。
-副图规则：
-1. 允许基于参考图迁移构图、氛围、卖点表达、背景、光线和商业视觉风格。
-2. 五个提示词必须生成五种明显不同的副图方向，不能只是同一段提示词轻微换词。
-3. 五个方向必须完全根据当前参考图自己判断，不要套用预设类别、预设风格或固定模板。
-4. 每个提示词都必须说明不同的背景、构图、文字区域、视觉重点和用途，让生成出来的五张图一眼就能看出不是同一模板。`;
+允许迁移参考图真实可见的场景、氛围、信息表达和商业视觉关系，但不能复制参考产品内容。`;
 
-    return `请基于参考图片做一次“商业视觉反推拆解”，输出必须是中文。目标不是复制参考图，而是理解这张图是如何构建出来的，并把它转化为可迁移到用户自己产品上的 AI 生图提示词。
+    return `请基于用户连接的参考图片做“商业视觉反推拆解”，输出中文。目标是先理解图片由什么元素构成、哪些内容不能动、哪些视觉关系可以迁移，再生成 5 条可以连接到用户新产品图的生图提示词。
 
 ${modeRule}
 
-你的身份：
-你是一名 Amazon 资深电商美工、产品摄影指导、商业视觉拆解师和 AI 生图提示词工程师。你需要像专业设计师复盘图片一样，判断这张图的结构、视觉逻辑、商业表达和可变化空间。
+请严格遵守：
+1. 参考图只用于理解画面结构、信息组织和视觉表达；参考产品的品牌、产品名、包装文字、卖点和具体身份不能复制。
+2. 用户后续上传的新产品图决定最终产品的真实外观、品牌、包装、颜色、标签和比例。
+3. 不要预先规定五个方向，不要列出风格清单，不要把某一种风格强行套到所有图片上。
+4. 先根据当前图片建立“元素清单”和“不可变/可变化清单”，再让五条提示词各自采用一个不同的、确实来自图片的主要变化机制。
+5. 五条提示词必须是最终生图指令，不是分析摘要；必须描述生成后画面会是什么样，包含产品关系、构图层次、文字区域和可见视觉元素。
+6. 五条提示词要自然具体，不能靠重复“高级、干净、真实、专业”制造差异。删除共同保真要求后，五条仍应是五张不同的设计稿。
+7. 参考图没有的元素不要补写；看不清的文字不要猜写。新图文字只使用用户产品真实可见的文字或明确提供的内容。
 
-核心原则：
-1. 参考图只用于分析构图、背景、颜色、字体、排版、光影、材质、信息层级和商业表达。
-2. 最终提示词必须写成“以用户后续上传的新产品图作为唯一产品主体”，新产品图决定品牌、瓶型、包装比例、标签位置、颜色和真实外观。
-3. 不要复制参考图中的品牌、产品名、具体文案、包装文字或具体卖点。
-4. 你不能机械套用固定方向，不能把同一段提示词改几个形容词后当成 5 个方案。
-5. 你必须先判断这张参考图“哪些不能变、哪些可以变、为什么可以变”，再基于这个判断生成 5 个明显不同的可行方案。
-6. 共性约束只允许在每个提示词里用一句话简短保留，不要把白底、主体真实、包装清晰、阴影、光影、留白这些共性内容反复写成主要篇幅。
-7. 每个方案都必须有一个独占的“核心变化点”，这个变化点必须来自当前参考图里真实可见的结构、局部元素、版式关系、信息组织、材质、纹理、图形、线条、色块、文案区或商业表达方法，不能和其他方案重复。
-8. 五个方案的第一句话不能相同；五个方案中任意两段连续相同的表达不能超过 25 个中文字。
-9. 如果两个方案生成出来可能大差不差，你必须在输出前重写其中一个方案。
-10. 不要寒暄，不要解释过程，直接输出结果。
-
-请严格按以下结构输出：
-
-一、画面定位
-说明这张图属于什么商业图类型，用于什么场景，整体想传达什么感觉。
-
-二、图片是如何构成的
-拆解画面中的主体位置、主体占比、前后层次、背景方式、文字区域、装饰元素、光线方向、阴影、反光、材质质感、留白比例、视觉重心。
-
-三、文字与信息文案结构
-如果参考图中有文字，请分析：
-主标题、副标题、卖点文字、辅助说明、图标说明分别在什么位置；
-字体大小、颜色、对齐方式、层级关系如何；
-新产品图中应该如何替换成用户自己产品的文案。
-如果文字不可读，请说明“部分文字不可读”，不要编造。
-
-四、视觉动线
-说明用户视线从哪里进入，经过哪些标题、主体、装饰线条、功能信息，最后停在哪里；如有流体、烟雾、光效、线条、色块、纹理或植物等元素，要说明它们怎样引导视线。
-
-五、固定要求
-请像和设计师沟通一样，列出生成新图时必须固定保留的视觉规则。这里固定的是参考图的商业视觉骨架，例如背景基调、主要颜色关系、主体比例、字体气质、版式秩序、光影质感和信息层级；不是固定参考图的品牌、产品名、具体文案或卖点。
-
-六、可变化空间
-请根据当前参考图本身判断哪些地方可以变化，并说明为什么可以变化。不要列举预设方向，不要写示例类别，不要套模板。
-
-七、5 个可连线提示词
-请根据参考图本身和上面的固定要求，独立思考并生成 5 个明显不同的中文生图提示词。
-每个提示词必须：
-- 以用户上传的新产品图作为唯一产品主体；
-- 保留新产品真实外观、品牌、包装结构、颜色、标签位置和产品比例；
-- 只迁移参考图的构图方法、视觉氛围、信息组织方式和商业表达；
-- 不复制参考图品牌、产品名、包装文字、具体卖点或不存在的信息；
-- 每个提示词开头先写“本方案的核心变化点是……”，而且五个核心变化点必须完全不同；
-- 每个提示词必须包含四段短结构：【核心变化点】【固定保留】【具体执行】【文字处理】；
-- 【核心变化点】只能写本方案真正不同的视觉机制，不能写白底、居中、3/4 角度、阴影、光影、标签清晰、留白充足、包装真实这些共性内容；
-- 【固定保留】只用一句话写共同底线，不要大段重复；
-- 【具体执行】必须写出这张图会和另外四张图明显不同的构图动作、局部设计动作、视觉焦点或信息组织动作；
-- 【文字处理】必须说明新图文字如何根据用户自己的产品替换，不复制参考图原文案；
-- 5 个提示词之间必须明显不同，不能只是同一方案换词；如果删除“核心变化点”后五条看起来仍然像同一张图，你必须重新生成。
-
-输出格式必须严格如下：
+输出格式：
+先输出简洁的参考图拆解和不可变/可变化判断，然后输出以下 5 个节点：
 【可连线提示词1｜标题】
-提示词正文
-【可连线提示词2｜标题】
-提示词正文
-一直到【可连线提示词5｜标题】。
-不要添加固定方向示例，不要把任何示例方向写入结果。`;
+生成一张...
+【目标画面】...
+【独特变化】...
+【文字处理】...
+
+一直到【可连线提示词5｜标题】。五个标题和五个独特变化必须不同，不要输出空泛解释。`;
 }
 
 function isReversePromptRequest(prompt: string) {
@@ -372,6 +318,40 @@ ${modeRule}
 ${compactAnalysis}`;
 }
 
+function buildReversePromptRepairRequest(analysis: string, candidateOutput: string, sourcePrompt: string) {
+    const modeRule = sourcePrompt.includes("本次反推用途：主图")
+        ? "主图仍然必须使用白色或接近白色背景，并以用户新产品作为唯一产品主体；这些是共同底线，不是变化方向。"
+        : "副图可以保留参考图的场景和氛围，但每条必须形成不同的最终画面。";
+    const compactCandidate = candidateOutput.length > 7600 ? candidateOutput.slice(0, 7600) : candidateOutput;
+    return `原参考图片仍然附在本次请求中。下面是一次未通过质量检查的五条提示词草稿，请你根据原图证据重新改写，不要解释原因，也不要原样重复草稿。
+
+${modeRule}
+
+这次必须先在内部完成一个“差异账本”：从参考图确实存在的构图关系、产品层次、局部图形、文字组织、材质或视觉动线中，选择 5 个互不相同的主变化，每个主变化只能归属于一条提示词。不要使用固定方向清单，不要为了制造差异随意添加参考图没有的元素。
+
+重新输出 5 条完整、可直接交给图片模型执行的中文提示词。每条正文第一句必须以“生成一张...”开头，并且必须包含：
+- 【目标画面】：直接描述最终画面，不是分析；
+- 【独特变化】：只写这一条独有的、来自原图的视觉机制，不能与其他四条重复；
+- 【文字处理】：只使用用户新产品图中真实存在或可以确认的文字，不复制参考图文案。
+
+删除共同的产品保真要求后，五条仍必须是五张明显不同的设计稿。不要写“换一种风格”“改变光影”这种空泛差异，也不要只替换颜色、角度或形容词。
+
+输出格式：
+【可连线提示词1｜标题】
+生成一张...
+【目标画面】...
+【独特变化】...
+【文字处理】...
+
+一直到【可连线提示词5｜标题】，不要输出分析摘要。
+
+参考图拆解分析：
+${analysis}
+
+未通过的草稿：
+${compactCandidate}`;
+}
+
 function normalizePromptForSimilarity(value: string) {
     return value
         .replace(/本方案的核心变化点是/g, "")
@@ -413,14 +393,16 @@ function reversePromptsAreTooSimilar(prompts: ReversePromptSplitResult["prompts"
     if (variationSections.some((section) => section.length < 24) || targetSections.some((section) => section.length < 40)) return true;
 
     let highSimilarityPairs = 0;
-    let highVariationPairs = 0;
+    let duplicateVariationPairs = 0;
+    let duplicateTargetPairs = 0;
     for (let index = 0; index < prompts.length; index += 1) {
         for (let next = index + 1; next < prompts.length; next += 1) {
-            if (jaccardSimilarity(prompts[index].content, prompts[next].content) > 0.46) highSimilarityPairs += 1;
-            if (jaccardSimilarity(variationSections[index], variationSections[next]) > 0.42 || jaccardSimilarity(targetSections[index], targetSections[next]) > 0.58) highVariationPairs += 1;
+            if (jaccardSimilarity(prompts[index].content, prompts[next].content) > 0.72) highSimilarityPairs += 1;
+            if (jaccardSimilarity(variationSections[index], variationSections[next]) > 0.72) duplicateVariationPairs += 1;
+            if (jaccardSimilarity(targetSections[index], targetSections[next]) > 0.82) duplicateTargetPairs += 1;
         }
     }
-    return highSimilarityPairs >= 4 || highVariationPairs >= 3;
+    return highSimilarityPairs >= 2 || duplicateVariationPairs >= 2 || duplicateTargetPairs >= 3;
 }
 
 function createCanvasNode(type: CanvasNodeType, position: Position, metadata?: CanvasNodeMetadata): CanvasNodeData {
@@ -2763,12 +2745,22 @@ function CanvasWorkspacePage() {
                                   );
                                   if (controller.signal.aborted) return [{ nodeId: targetNodeId, content: analysis || analysisStreamed }];
                                   const analysisContent = analysis || analysisStreamed;
-                                  const promptOutput = await requestImageQuestion(
+                                  let promptOutput = await requestImageQuestion(
                                       generationConfig,
                                       buildNodeResponseMessages({ ...generationContext, prompt: buildReversePromptPlansRequest(analysisContent, effectivePrompt) }),
                                       () => {},
                                       { signal: controller.signal, temperature: 1.08, topP: 0.98, maxTokens: 4200 },
                                   );
+                                  const firstPromptResult = splitReversePromptOutput(promptOutput || "");
+                                  if (firstPromptResult?.prompts.length && reversePromptsAreTooSimilar(firstPromptResult.prompts)) {
+                                      const repairedPromptOutput = await requestImageQuestion(
+                                          generationConfig,
+                                          buildNodeResponseMessages({ ...generationContext, prompt: buildReversePromptRepairRequest(analysisContent, promptOutput, effectivePrompt) }),
+                                          () => {},
+                                          { signal: controller.signal, temperature: 1.16, topP: 0.99, maxTokens: 4200 },
+                                      );
+                                      if (repairedPromptOutput.trim()) promptOutput = repairedPromptOutput;
+                                  }
                                   streamed = `${analysisContent}\n\n${promptOutput}`;
                                   return [{ nodeId: targetNodeId, content: streamed }];
                               } finally {

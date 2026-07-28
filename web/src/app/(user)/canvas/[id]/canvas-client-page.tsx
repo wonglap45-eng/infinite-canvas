@@ -306,8 +306,8 @@ type ReversePromptSplitResult = NonNullable<ReturnType<typeof splitReversePrompt
 
 function buildReversePromptAnalysisOnlyRequest(prompt: string) {
     const modeRule = prompt.includes("本次反推用途：主图")
-        ? "本次用途是主图反推：请重点分析白底电商主图里可以迁移的版式、产品比例、留白、文字层级、局部图形、包装结构露出、光影和材质。不要把彩色背景、场景道具、生活方式元素当成主图必需项。"
-        : "本次用途是副图反推：请重点分析可以迁移的氛围、场景、卖点表达、背景关系、信息组织、视觉动线和商业风格。";
+        ? "本次用途是主图反推：白色背景是共同底线，但仍要完整识别参考图中真实存在的产品关系、包装层次、版式、文字区域、图形、材质和视觉动线。不要把参考图的品牌和原文案带入新产品。"
+        : "本次用途是副图反推：请完整识别参考图中真实存在的主体关系、氛围、场景、卖点表达、背景关系、信息组织、视觉动线和商业风格。";
 
     return `请基于参考图片做一次“商业视觉拆解分析”，输出必须是中文。
 
@@ -316,57 +316,52 @@ ${modeRule}
 重要：这是反推流程第 1 步，只做拆解分析，不要输出任何【可连线提示词】标记，不要生成 5 个方案。
 
 请像资深设计师复盘一样，把参考图拆清楚：
-1. 这张图属于什么商业图类型，适合主图还是副图，核心商业目的是什么。
-2. 画面由哪些层构成：背景层、主体产品层、文字信息层、装饰元素层、阴影反光层、前景或后景层。
-3. 主体数量、主体位置、主体占比、画面重心、留白比例、镜头角度、光线方向、材质表现分别是什么。
-4. 可见文字是什么，分别属于主标题、副标题、卖点、说明、图标标签还是规格信息；如果看不清，请写“部分文字不可读”，不要编造。
-5. 哪些是必须迁移的商业视觉骨架，哪些只是参考产品自己的品牌/包装/文案，不能迁移。
-6. 这张图里具体有哪些视觉元素存在，例如包装层次、线条、图标、色块、纹理、材质、局部图案、信息区、卖点区、规格区、装饰区、光泽或结构露出。
-7. 什么不能变：用户后续上传的新产品真实外观、品牌、包装结构、标签位置、颜色和比例不能被改；参考图的品牌、产品名、具体文案和卖点不能复制。
-8. 什么能变：根据当前图片判断哪些视觉元素可以迁移或变化成不同主图风格，并说明为什么可以变。不要列举预设方向，不要套模板。
+1. 这张图的最终画面是什么，不要只说“产品图”，要说明它如何组织产品、文字、图形、背景和视觉重心。
+2. 按画面实际存在的层次拆解背景、主体、包装/配件关系、文字信息、装饰元素、阴影反光、前景和后景；没有的元素不要补。
+3. 记录主体数量、相对位置、占画面比例、裁切方式、视线动线、镜头角度、光线方向和材质表现。
+4. 逐项记录参考图中能读到的文字及其位置、大小、层级、对齐方式和作用；看不清的写“部分文字不可读”，绝不猜写。
+5. 把“参考产品自身内容”和“可迁移的画面构成”分开：品牌、产品名、包装文字、卖点、规格属于前者；构图关系、信息组织和视觉元素属于后者。
+6. 列出图片中确实存在的可迁移元素，并说明它们在画面中的作用。不要为了凑数量添加图片里没有的元素。
+7. 明确不能变的内容：后续上传的新产品真实外观、品牌、包装结构、标签位置、颜色和比例；参考图的品牌、产品名、具体文案和卖点不能复制。
+8. 明确可以变化的内容：只根据当前图片判断哪些元素可以重新组织成不同画面，并说明每种变化会怎样改变最终画面。不要列出预设风格、固定方向或示例类别。
 
 输出必须是中文，内容越像给设计团队的拆解说明越好。`;
 }
 
 function buildReversePromptPlansRequest(analysis: string, sourcePrompt: string) {
-    const compactAnalysis = analysis.length > 3600 ? `${analysis.slice(0, 3600)}\n\n（以上为系统截取的核心拆解内容，请基于这些信息生成 5 个方案，不要要求补充原图。）` : analysis;
+    const compactAnalysis = analysis.length > 5200 ? `${analysis.slice(0, 5200)}\n\n（以上为系统截取的核心拆解内容；原参考图会同时提供给你，请以图片证据为准。）` : analysis;
     const modeRule = sourcePrompt.includes("本次反推用途：主图")
-        ? `本次用途是主图。五个提示词都必须遵守：纯白或接近纯白背景；新产品是唯一主体；不增加人物、场景、道具或大段额外营销文字。注意：白底、主体真实、标签清晰、主体占比、阴影、光影和留白只是共同底线，不能当作方案差异。`
+        ? `本次用途是主图。五个提示词都必须使用纯白或接近纯白背景，并以用户新产品作为唯一产品主体。不要添加人物、生活场景或参考图品牌。白底、产品真实、包装清晰只是共同底线，不能占据每条提示词的主要篇幅，也不能被当成五种差异。`
         : `本次用途是副图。五个提示词允许迁移参考图的氛围、信息表达、背景关系、构图节奏和商业视觉语言，但必须各自形成明显不同的画面。`;
 
-    return `下面是一份参考图的商业视觉拆解分析。请你基于这份分析生成 5 个可直接连线使用的中文 AI 生图提示词。
+    return `你现在仍然可以看到原参考图片，下面同时附有第一步的拆解分析。请先以原图为主要证据，再用分析校对细节，生成 5 个可直接连线使用的中文 AI 生图提示词。
 
 ${modeRule}
 
-你的目标不是复述分析，也不是输出“迁移某某结构”的说明。你的目标是直接写出 5 条完整生图提示词，让员工把每条提示词连到自己的产品图后，可以生成 5 张明显不一样的主图/副图。
+你的目标不是复述分析，也不是输出“迁移某某结构”的说明。你的目标是写出 5 条真正可以交给图片模型执行的完整生图提示词，让员工把每条提示词连接到自己的新产品图后，得到 5 张一眼可区分的主图/副图。
 
-请先在心里完成判断：
-- 参考图里有什么元素存在；
-- 哪些元素属于商业视觉骨架，可以迁移；
-- 哪些内容是原图产品自己的品牌、文案、卖点，不能迁移；
-- 哪些局部元素可以发展成 5 种不同画面风格。
+请先在心里完成判断，但不要把这段判断写成五个提示词：
+- 参考图里实际有什么元素，哪些是原图产品自身内容；
+- 哪些构成关系可以迁移到用户产品，哪些必须舍弃；
+- 如何让五条提示词分别选择参考图中不同的视觉机制，而不是共同模板换形容词。
 
 最终只输出 5 个完整提示词节点，不要输出分析摘要。
 
 硬性要求：
-1. 每个节点必须是完整生图提示词，不是分析说明。每个节点第一句必须以“生成一张...”开头，明确最终画面要长什么样。
-2. 每个提示词必须以用户上传的新产品图作为唯一产品主体，保留新产品真实外观、品牌、包装结构、颜色、标签位置和产品比例。
-3. 只迁移参考图的构图方法、视觉氛围、信息组织方式和商业表达；不要复制参考图品牌、产品名、包装文字、具体卖点或不存在的信息。
-4. 每个提示词必须包含四段短结构：【目标画面】【固定保留】【风格变化】【文字处理】。
-5. 【目标画面】必须直接描述最终生成图：主体怎样摆放、背景怎样、哪些图形/信息/材质元素出现、画面质量怎样。
-6. 【固定保留】只用一句话写共同底线：以用户新产品为唯一主体，保持新产品真实外观、品牌、包装、标签、颜色和比例。
-7. 【风格变化】必须来自分析里提到的具体可见结构、局部元素、版式关系、信息组织、材质、纹理、图形、线条、色块、文案区或商业表达方法，并且五条完全不同。
-8. 【风格变化】不能写白底、居中、3/4 角度、阴影、光影、标签清晰、留白充足、包装真实、主体占比，这些只是基础要求。
-9. 【文字处理】必须说明新图文字如何根据用户自己的产品替换，不复制参考图原文案；如果是主图，不要额外添加大段营销文字，只保留新产品包装本身已有文字。
-10. 五个提示词生成出来必须像五张不同主图设计稿，而不是同一张图的小改版；如果五张图会大差不差，请在输出前重写。
-11. 不要添加方向示例，不要套用固定风格类别，不要写“方案一/方案二只是角度不同”。所有变化都必须来自这张参考图本身。
-12. 每个提示词建议 180-320 个中文字，太短会不可执行，太长会变成分析报告。
+1. 每个节点必须是完整生图提示词，不是分析说明。正文第一句必须以“生成一张...”开头，并直接描述最终画面。
+2. 每条都必须以用户上传的新产品图为唯一产品主体，保留新产品的真实外观、品牌、包装结构、颜色、标签位置和比例。
+3. 只迁移参考图可见的构图关系、信息组织、局部图形、材质、纹理或商业表达，不复制参考图品牌、产品名、包装文字、具体卖点或不存在的信息。
+4. 五条提示词必须分别选择参考图中的不同视觉机制作为主变化。五个主变化必须是图片证据推导出来的，不能用预设方向、固定风格名称或随机形容词代替。
+5. 每条都要具体写清最终画面中的产品位置、层次关系、可见信息区域、构图重心、视觉动线和图像质感；不能只写“高级、简洁、科技感”。
+6. 文字处理必须针对用户自己的产品：保留用户产品图上真实可见且需要保留的文字，重新组织文字位置和层级；绝不照搬参考图文字，也不凭空编造用户产品没有的规格、功效或卖点。主图不得添加大段外部营销文案。
+7. 五条提示词不能共用同一个“目标画面”骨架后只替换一个名词。删除每条的共同保真要求后，五条仍然必须是五个不同的画面设计。
+8. 每条建议 320-520 个中文字，内容要能直接执行，不要写成泛泛的分析报告。
 
 输出格式必须严格如下：
 【可连线提示词1｜标题】
+生成一张...
 【目标画面】...
-【固定保留】...
-【风格变化】...
+【独特变化】...
 【文字处理】...
 
 【可连线提示词2｜标题】
@@ -384,6 +379,11 @@ function normalizePromptForSimilarity(value: string) {
         .replace(/保留新产品真实外观|纯白色背景|接近#?FFFFFF|不要复制参考图[^。；;]*/g, "")
         .replace(/[\s，。、“”‘’：:；;,.!?！？（）()【】|｜\-—]/g, "")
         .toLowerCase();
+}
+
+function reversePromptSection(value: string, section: "目标画面" | "独特变化") {
+    const pattern = new RegExp(`【${section}】([\\s\\S]*?)(?=【(?:目标画面|独特变化|文字处理|可连线提示词)|$)`);
+    return value.match(pattern)?.[1]?.trim() || "";
 }
 
 function bigrams(value: string) {
@@ -404,14 +404,23 @@ function jaccardSimilarity(a: string, b: string) {
 }
 
 function reversePromptsAreTooSimilar(prompts: ReversePromptSplitResult["prompts"]) {
-    if (prompts.length < 2) return false;
+    if (prompts.length !== 5) return true;
+    const titles = prompts.map((prompt) => normalizePromptForSimilarity(prompt.title));
+    if (new Set(titles).size < 4) return true;
+
+    const variationSections = prompts.map((prompt) => reversePromptSection(prompt.content, "独特变化"));
+    const targetSections = prompts.map((prompt) => reversePromptSection(prompt.content, "目标画面"));
+    if (variationSections.some((section) => section.length < 24) || targetSections.some((section) => section.length < 40)) return true;
+
     let highSimilarityPairs = 0;
+    let highVariationPairs = 0;
     for (let index = 0; index < prompts.length; index += 1) {
         for (let next = index + 1; next < prompts.length; next += 1) {
             if (jaccardSimilarity(prompts[index].content, prompts[next].content) > 0.46) highSimilarityPairs += 1;
+            if (jaccardSimilarity(variationSections[index], variationSections[next]) > 0.42 || jaccardSimilarity(targetSections[index], targetSections[next]) > 0.58) highVariationPairs += 1;
         }
     }
-    return highSimilarityPairs >= 4;
+    return highSimilarityPairs >= 4 || highVariationPairs >= 3;
 }
 
 function createCanvasNode(type: CanvasNodeType, position: Position, metadata?: CanvasNodeMetadata): CanvasNodeData {
@@ -2756,9 +2765,9 @@ function CanvasWorkspacePage() {
                                   const analysisContent = analysis || analysisStreamed;
                                   const promptOutput = await requestImageQuestion(
                                       generationConfig,
-                                      [{ role: "user", content: buildReversePromptPlansRequest(analysisContent, effectivePrompt) }],
+                                      buildNodeResponseMessages({ ...generationContext, prompt: buildReversePromptPlansRequest(analysisContent, effectivePrompt) }),
                                       () => {},
-                                      { signal: controller.signal, temperature: 1.08, topP: 0.98, maxTokens: 2200 },
+                                      { signal: controller.signal, temperature: 1.08, topP: 0.98, maxTokens: 4200 },
                                   );
                                   streamed = `${analysisContent}\n\n${promptOutput}`;
                                   return [{ nodeId: targetNodeId, content: streamed }];

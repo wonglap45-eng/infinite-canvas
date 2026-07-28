@@ -103,7 +103,7 @@ type GeminiPayload = {
     promptFeedback?: { blockReason?: string };
 };
 type GeminiStreamState = { buffer: string; text: string; toolCalls: ResponseToolCall[]; error?: string };
-type RequestOptions = { signal?: AbortSignal; temperature?: number; topP?: number };
+type RequestOptions = { signal?: AbortSignal; temperature?: number; topP?: number; maxTokens?: number };
 type OpenRouterImageReference = { type: "image_url"; image_url: { url: string } };
 type UrlImagePayload = {
     model: string;
@@ -785,6 +785,7 @@ async function requestChatCompletionResponse(config: AiConfig, messages: Respons
         stream: true,
         ...(typeof options?.temperature === "number" ? { temperature: options.temperature } : {}),
         ...(typeof options?.topP === "number" ? { top_p: options.topP } : {}),
+        ...(typeof options?.maxTokens === "number" ? { max_tokens: options.maxTokens } : {}),
         ...(tools?.length ? { tools, tool_choice: toolChoice } : {}),
     };
     const response = await fetch(aiApiUrl(config, "/chat/completions"), {
@@ -865,6 +866,7 @@ function geminiGenerationConfig(options?: RequestOptions) {
     const generationConfig: Record<string, unknown> = {};
     if (typeof options?.temperature === "number") generationConfig.temperature = options.temperature;
     if (typeof options?.topP === "number") generationConfig.topP = options.topP;
+    if (typeof options?.maxTokens === "number") generationConfig.maxOutputTokens = options.maxTokens;
     return Object.keys(generationConfig).length ? { generationConfig } : {};
 }
 

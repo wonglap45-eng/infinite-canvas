@@ -193,7 +193,8 @@ function buildImagePromptReversePreset(mode: ReversePromptMode) {
 3. 产品必须是唯一绝对主体，居中或轻微偏中，画面干净，主体占画面约 75%-90%。
 4. 不要出现人物、手、桌面、生活场景、虚构配件、夸张光效或大段说明文字。
 5. 可以保留产品包装上本来存在的文字、logo 和标签，但不要额外生成新的营销文字。
-6. 五个提示词必须在白底主图规则内，由你根据当前参考图的真实结构独立发散；允许围绕参考图中真实存在的版式、线条、纹理、局部图案、信息分区、阴影和留白方式做不同设计操作，但不要套用固定角度、固定陈列或固定模板。`
+6. 五个提示词必须在白底主图规则内，由你根据当前参考图的真实结构独立发散。白底、主体真实、标签清晰、主体占比、阴影和光影只是共性约束，不能当作五个方案的差异点。
+7. 五个方案必须像五张不同设计稿：每张都要选择参考图中不同的可迁移视觉机制，例如信息区组织、局部纹理、线条路径、图标/符号秩序、材质表现、包装侧面露出、留白节奏、局部特写关系等。具体选择必须由你根据当前参考图判断，不要套用预设方向。`
             : `本次反推用途：副图。
 副图规则：
 1. 允许基于参考图迁移构图、氛围、卖点表达、背景、光线和商业视觉风格。
@@ -214,10 +215,11 @@ ${modeRule}
 3. 不要复制参考图中的品牌、产品名、具体文案、包装文字或具体卖点。
 4. 你不能机械套用固定方向，不能把同一段提示词改几个形容词后当成 5 个方案。
 5. 你必须先判断这张参考图“哪些不能变、哪些可以变、为什么可以变”，再基于这个判断生成 5 个明显不同的可行方案。
-6. 每个方案都必须有一个独占的“核心变化点”，这个变化点不能和其他方案重复。
-7. 五个方案的第一句话不能相同；五个方案中任意两段连续相同的表达不能超过 25 个中文字。
-8. 如果两个方案生成出来可能大差不差，你必须在输出前重写其中一个方案。
-9. 不要寒暄，不要解释过程，直接输出结果。
+6. 共性约束只允许在每个提示词里用一句话简短保留，不要把白底、主体真实、包装清晰、阴影、光影、留白这些共性内容反复写成主要篇幅。
+7. 每个方案都必须有一个独占的“核心变化点”，这个变化点必须来自当前参考图里真实可见的结构、局部元素、版式关系、信息组织、材质、纹理、图形、线条、色块、文案区或商业表达方法，不能和其他方案重复。
+8. 五个方案的第一句话不能相同；五个方案中任意两段连续相同的表达不能超过 25 个中文字。
+9. 如果两个方案生成出来可能大差不差，你必须在输出前重写其中一个方案。
+10. 不要寒暄，不要解释过程，直接输出结果。
 
 请严格按以下结构输出：
 
@@ -250,10 +252,13 @@ ${modeRule}
 - 保留新产品真实外观、品牌、包装结构、颜色、标签位置和产品比例；
 - 只迁移参考图的构图方法、视觉氛围、信息组织方式和商业表达；
 - 不复制参考图品牌、产品名、包装文字、具体卖点或不存在的信息；
-- 明确说明背景、构图、主体位置、文字区域、装饰元素、光影、材质和画面质量；
 - 每个提示词开头先写“本方案的核心变化点是……”，而且五个核心变化点必须完全不同；
-- 每个提示词都必须同时写清楚“固定保留什么”和“本方案具体改变什么”；
-- 5 个提示词之间必须明显不同，不能只是同一方案换词。
+- 每个提示词必须包含四段短结构：【核心变化点】【固定保留】【具体执行】【文字处理】；
+- 【核心变化点】只能写本方案真正不同的视觉机制，不能写白底、居中、3/4 角度、阴影、光影、标签清晰、留白充足、包装真实这些共性内容；
+- 【固定保留】只用一句话写共同底线，不要大段重复；
+- 【具体执行】必须写出这张图会和另外四张图明显不同的构图动作、局部设计动作、视觉焦点或信息组织动作；
+- 【文字处理】必须说明新图文字如何根据用户自己的产品替换，不复制参考图原文案；
+- 5 个提示词之间必须明显不同，不能只是同一方案换词；如果删除“核心变化点”后五条看起来仍然像同一张图，你必须重新生成。
 
 输出格式必须严格如下：
 【可连线提示词1｜标题】
@@ -299,6 +304,67 @@ function splitReversePromptOutput(content: string) {
 
 type ReversePromptSplitResult = NonNullable<ReturnType<typeof splitReversePromptOutput>>;
 
+function buildReversePromptAnalysisOnlyRequest(prompt: string) {
+    const modeRule = prompt.includes("本次反推用途：主图")
+        ? "本次用途是主图反推：请重点分析白底电商主图里可以迁移的版式、产品比例、留白、文字层级、局部图形、包装结构露出、光影和材质。不要把彩色背景、场景道具、生活方式元素当成主图必需项。"
+        : "本次用途是副图反推：请重点分析可以迁移的氛围、场景、卖点表达、背景关系、信息组织、视觉动线和商业风格。";
+
+    return `请基于参考图片做一次“商业视觉拆解分析”，输出必须是中文。
+
+${modeRule}
+
+重要：这是反推流程第 1 步，只做拆解分析，不要输出任何【可连线提示词】标记，不要生成 5 个方案。
+
+请像资深设计师复盘一样，把参考图拆清楚：
+1. 这张图属于什么商业图类型，适合主图还是副图，核心商业目的是什么。
+2. 画面由哪些层构成：背景层、主体产品层、文字信息层、装饰元素层、阴影反光层、前景或后景层。
+3. 主体数量、主体位置、主体占比、画面重心、留白比例、镜头角度、光线方向、材质表现分别是什么。
+4. 可见文字是什么，分别属于主标题、副标题、卖点、说明、图标标签还是规格信息；如果看不清，请写“部分文字不可读”，不要编造。
+5. 哪些是必须迁移的商业视觉骨架，哪些只是参考产品自己的品牌/包装/文案，不能迁移。
+6. 这张图里有哪些可变化空间。只根据当前图片判断，不要列举预设方向，不要套模板。
+
+输出必须是中文，内容越像给设计团队的拆解说明越好。`;
+}
+
+function buildReversePromptPlansRequest(analysis: string, sourcePrompt: string) {
+    const compactAnalysis = analysis.length > 3600 ? `${analysis.slice(0, 3600)}\n\n（以上为系统截取的核心拆解内容，请基于这些信息生成 5 个方案，不要要求补充原图。）` : analysis;
+    const modeRule = sourcePrompt.includes("本次反推用途：主图")
+        ? `本次用途是主图。五个提示词都必须遵守：纯白或接近纯白背景；新产品是唯一主体；不增加人物、场景、道具或大段额外营销文字。注意：白底、主体真实、标签清晰、主体占比、阴影、光影和留白只是共同底线，不能当作方案差异。`
+        : `本次用途是副图。五个提示词允许迁移参考图的氛围、信息表达、背景关系、构图节奏和商业视觉语言，但必须各自形成明显不同的画面。`;
+
+    return `下面是一份参考图的商业视觉拆解分析。请你基于这份分析生成 5 个可直接连线使用的中文 AI 生图提示词。
+
+${modeRule}
+
+你的目标不是复述分析，也不是给五条同义改写，而是像和 GPT 深聊后得到的方案一样：每条都从参考图里不同的可迁移视觉机制出发，形成一张明显不同的设计稿。
+
+硬性要求：
+1. 每个提示词必须以用户上传的新产品图作为唯一产品主体，保留新产品真实外观、品牌、包装结构、颜色、标签位置和产品比例。
+2. 只迁移参考图的构图方法、视觉氛围、信息组织方式和商业表达；不要复制参考图品牌、产品名、包装文字、具体卖点或不存在的信息。
+3. 每个提示词必须包含四段短结构：【核心变化点】【固定保留】【具体执行】【文字处理】。
+4. 【核心变化点】必须来自分析里提到的具体可见结构、局部元素、版式关系、信息组织、材质、纹理、图形、线条、色块、文案区或商业表达方法。
+5. 【核心变化点】不能写白底、居中、3/4 角度、阴影、光影、标签清晰、留白充足、包装真实、主体占比，这些只是基础要求。
+6. 五个核心变化点必须完全不同；如果五张图生成出来会大差不差，请在输出前重写。
+7. 不要添加方向示例，不要套用固定风格类别，不要写“方案一/方案二只是角度不同”。所有变化都必须来自这张参考图本身。
+8. 【固定保留】只用一句话，不要大段重复共同规则。
+9. 【具体执行】必须写出本方案会如何改变画面结构、局部设计、信息区、视觉焦点或装饰关系，让它和另外四条明显不同。
+10. 【文字处理】必须说明新图文字如何根据用户自己的产品替换，不复制参考图原文案。
+
+输出格式必须严格如下：
+【可连线提示词1｜标题】
+【核心变化点】...
+【固定保留】...
+【具体执行】...
+【文字处理】...
+
+【可连线提示词2｜标题】
+...
+一直到【可连线提示词5｜标题】。
+
+参考图拆解分析：
+${compactAnalysis}`;
+}
+
 function normalizePromptForSimilarity(value: string) {
     return value
         .replace(/本方案的核心变化点是/g, "")
@@ -334,34 +400,6 @@ function reversePromptsAreTooSimilar(prompts: ReversePromptSplitResult["prompts"
         }
     }
     return highSimilarityPairs >= 4;
-}
-
-function buildReversePromptRewriteRequest(result: ReversePromptSplitResult) {
-    const promptList = result.prompts.map((item) => `【可连线提示词${item.index}｜${item.title}】\n${item.content}`).join("\n\n");
-    return `下面是一次失败的商业视觉反推结果。失败原因：5 个可连线提示词过于相似，基本都在重复主体位置、白底、包装真实、标签清晰、阴影和光影，生成图片会大差不差。
-
-请你只重写“5 个可连线提示词”，不要重写前面的分析。
-
-重写要求：
-1. 必须基于原分析中的固定要求，但不要把固定要求大段重复到每个方案开头。
-2. 每个方案第一句必须写“本方案的核心变化点是……”，核心变化点必须来自参考图中可见的具体视觉元素、局部区域、版式关系、图案结构、文字区处理或商业表达方法。
-3. 核心变化点不能是：主体居中、主体偏左、3/4 角度、纯白背景、阴影、光影、标签清晰、信息层级、包装真实、留白充足。这些是基础要求，不是方案差异。
-4. 每个方案必须明确“固定保留什么”和“具体改变什么”，但五个方案不能使用同一套句式。
-5. 五个方案的构图操作、视觉焦点、局部设计动作必须明显不同；如果两张图生成出来会差不多，请重写其中一个。
-6. 不要添加预设方向示例，不要套用固定风格类别，不要复制参考图品牌、产品名或原文案。
-
-输出格式必须严格如下：
-【可连线提示词1｜标题】
-提示词正文
-【可连线提示词2｜标题】
-提示词正文
-一直到【可连线提示词5｜标题】。
-
-原分析：
-${result.analysis}
-
-失败的 5 个提示词：
-${promptList}`;
 }
 
 function createCanvasNode(type: CanvasNodeType, position: Position, metadata?: CanvasNodeMetadata): CanvasNodeData {
@@ -2686,29 +2724,71 @@ function CanvasWorkspacePage() {
                 const controller = runController;
                 const textTargetIds = childIds.length ? childIds : [nodeId];
                 textTargetIds.forEach((targetNodeId) => startGenerationRequest(targetNodeId, nodeId, nodeId, controller));
-                const answers = await Promise.all(
-                    textTargetIds.map((targetNodeId) => {
-                        let localStreamed = "";
-                        return requestImageQuestion(generationConfig, buildNodeResponseMessages({ ...generationContext, prompt: effectivePrompt }), (text) => {
-                            localStreamed = text;
-                            streamed = text;
-                            if (isConfigNode) return;
-                            setNodes((prev) => prev.map((node) => (node.id === targetNodeId ? { ...node, type: CanvasNodeType.Text, metadata: { ...node.metadata, content: text, status: NODE_STATUS_LOADING } } : node)));
-                        }, { signal: controller.signal, ...(isReversePromptRun ? { temperature: 0.92, topP: 0.96 } : {}) }).then((answer) => ({ nodeId: targetNodeId, content: answer || localStreamed })).finally(() => finishGenerationRequest(targetNodeId, controller));
-                    }),
-                );
+                const answers =
+                    isReversePromptRun && childIds.length === 1
+                        ? await (async () => {
+                              const targetNodeId = childIds[0];
+                              try {
+                                  let analysisStreamed = "";
+                                  const analysis = await requestImageQuestion(
+                                      generationConfig,
+                                      buildNodeResponseMessages({ ...generationContext, prompt: buildReversePromptAnalysisOnlyRequest(effectivePrompt) }),
+                                      (text) => {
+                                          analysisStreamed = text;
+                                          streamed = text;
+                                          setNodes((prev) => prev.map((node) => (node.id === targetNodeId ? { ...node, title: "反推分析中", type: CanvasNodeType.Text, metadata: { ...node.metadata, content: text, status: NODE_STATUS_LOADING } } : node)));
+                                      },
+                                      { signal: controller.signal, temperature: 0.35, topP: 0.85, maxTokens: 1800 },
+                                  );
+                                  if (controller.signal.aborted) return [{ nodeId: targetNodeId, content: analysis || analysisStreamed }];
+                                  const analysisContent = analysis || analysisStreamed;
+                                  const promptOutput = await requestImageQuestion(
+                                      generationConfig,
+                                      [{ role: "user", content: buildReversePromptPlansRequest(analysisContent, effectivePrompt) }],
+                                      () => {},
+                                      { signal: controller.signal, temperature: 1.08, topP: 0.98, maxTokens: 2200 },
+                                  );
+                                  streamed = `${analysisContent}\n\n${promptOutput}`;
+                                  return [{ nodeId: targetNodeId, content: streamed }];
+                              } finally {
+                                  finishGenerationRequest(targetNodeId, controller);
+                              }
+                          })()
+                        : await Promise.all(
+                              textTargetIds.map((targetNodeId) => {
+                                  let localStreamed = "";
+                                  return requestImageQuestion(generationConfig, buildNodeResponseMessages({ ...generationContext, prompt: effectivePrompt }), (text) => {
+                                      localStreamed = text;
+                                      streamed = text;
+                                      if (isConfigNode) return;
+                                      setNodes((prev) => prev.map((node) => (node.id === targetNodeId ? { ...node, type: CanvasNodeType.Text, metadata: { ...node.metadata, content: text, status: NODE_STATUS_LOADING } } : node)));
+                                  }, { signal: controller.signal, ...(isReversePromptRun ? { temperature: 0.92, topP: 0.96 } : {}) })
+                                      .then((answer) => ({ nodeId: targetNodeId, content: answer || localStreamed }))
+                                      .finally(() => finishGenerationRequest(targetNodeId, controller));
+                              }),
+                          );
                 if (controller.signal.aborted) return;
                 const answerByNodeId = new Map(answers.map((item) => [item.nodeId, item.content]));
                 let reversePromptResult = isConfigNode && childIds.length === 1 && isReversePromptRequest(effectivePrompt) ? splitReversePromptOutput(answerByNodeId.get(childIds[0]) || streamed) : null;
                 if (reversePromptResult?.prompts.length && reversePromptsAreTooSimilar(reversePromptResult.prompts)) {
-                    const rewritten = await requestImageQuestion(generationConfig, [{ role: "user", content: buildReversePromptRewriteRequest(reversePromptResult) }], () => {}, { signal: controller.signal, temperature: 1.05, topP: 0.98 });
-                    const rewrittenResult = splitReversePromptOutput(rewritten);
-                    if (rewrittenResult?.prompts.length) {
-                        reversePromptResult = {
-                            analysis: `${reversePromptResult.analysis}\n\n系统检测到第一版 5 个提示词相似度过高，已自动重写为差异更明显的 5 个方案。`,
-                            prompts: rewrittenResult.prompts,
-                        };
-                    }
+                    const qualityMessage = "系统检测到这 5 个提示词相似度过高，已拦截输出，避免继续用相似提示词浪费生图额度。请重新生成，系统会按新的拆解规则要求模型给出更分散的方案。";
+                    setNodes((prev) =>
+                        prev.map((node) =>
+                            childIds.includes(node.id)
+                                ? {
+                                      ...node,
+                                      title: "反推质量检查未通过",
+                                      width: REVERSE_PROMPT_RESULT_NODE_SIZE.width,
+                                      height: REVERSE_PROMPT_RESULT_NODE_SIZE.height,
+                                      metadata: { ...node.metadata, content: `${reversePromptResult.analysis}\n\n${qualityMessage}`, status: NODE_STATUS_ERROR, errorDetails: qualityMessage },
+                                  }
+                                : node.id === nodeId && isConfigNode
+                                  ? { ...node, metadata: { ...node.metadata, status: NODE_STATUS_ERROR, errorDetails: qualityMessage } }
+                                  : node,
+                        ),
+                    );
+                    message.error(qualityMessage);
+                    return;
                 }
                 if (reversePromptResult?.prompts.length) {
                     const promptCount = Math.min(5, reversePromptResult.prompts.length);

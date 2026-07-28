@@ -104,6 +104,8 @@ const NODE_STATUS_IDLE = "idle" as const;
 const NODE_STATUS_LOADING = "loading" as const;
 const NODE_STATUS_SUCCESS = "success" as const;
 const NODE_STATUS_ERROR = "error" as const;
+const LONG_PROMPT_NODE_SIZE = { width: 620, height: 420 };
+const REVERSE_PROMPT_RESULT_NODE_SIZE = { width: 640, height: 460 };
 const IMAGE_PROMPT_REVERSE_PRESET = `请根据参考图片反推出“这张图是如何被构建出来的”，生成一段可复用到其他产品上的 AI 生图提示词。
 
 要求：
@@ -1777,15 +1779,16 @@ function CanvasWorkspacePage() {
 
             const reversePrompt = buildImagePromptReversePreset(mode);
             const gap = 96;
-            const textSpec = NODE_DEFAULT_SIZE[CanvasNodeType.Text];
             const configSpec = NODE_DEFAULT_SIZE[CanvasNodeType.Config];
             const centerY = node.position.y + node.height / 2;
             const textNode = {
                 ...createCanvasNode(
                     CanvasNodeType.Text,
-                    { x: node.position.x + node.width + gap + textSpec.width / 2, y: centerY },
+                    { x: node.position.x + node.width + gap + LONG_PROMPT_NODE_SIZE.width / 2, y: centerY },
                     { content: reversePrompt, prompt: reversePrompt, status: NODE_STATUS_SUCCESS, fontSize: 14 },
                 ),
+                width: LONG_PROMPT_NODE_SIZE.width,
+                height: LONG_PROMPT_NODE_SIZE.height,
                 title: mode === "main" ? "主图反推提示词" : "副图反推提示词",
             };
             const configNode = {
@@ -1846,10 +1849,11 @@ function CanvasWorkspacePage() {
             if (!text) return;
             const selectedImages = nodesRef.current.filter((node) => selectedNodeIdsRef.current.has(node.id) && node.type === CanvasNodeType.Image && node.metadata?.content);
             const anchor = selectedImages[0];
-            const spec = NODE_DEFAULT_SIZE[CanvasNodeType.Text];
-            const center = anchor ? { x: anchor.position.x + anchor.width + 120 + spec.width / 2, y: anchor.position.y + anchor.height / 2 } : getCanvasCenter();
+            const center = anchor ? { x: anchor.position.x + anchor.width + 120 + LONG_PROMPT_NODE_SIZE.width / 2, y: anchor.position.y + anchor.height / 2 } : getCanvasCenter();
             const node = {
                 ...createCanvasNode(CanvasNodeType.Text, center, { content: text, prompt: text, status: NODE_STATUS_SUCCESS, fontSize: 14 }),
+                width: LONG_PROMPT_NODE_SIZE.width,
+                height: LONG_PROMPT_NODE_SIZE.height,
                 title: "生成提示词",
             };
 
@@ -2573,6 +2577,8 @@ function CanvasWorkspacePage() {
                 const textConfig = NODE_DEFAULT_SIZE[CanvasNodeType.Text];
                 const parentPosition = sourceNode?.position || { x: 0, y: 0 };
                 const childIds = isConfigNode || editingTextNode ? Array.from({ length: textCount }, () => nanoid()) : [];
+                const isReversePromptRun = isConfigNode && isReversePromptRequest(effectivePrompt);
+                const outputTextConfig = isReversePromptRun ? REVERSE_PROMPT_RESULT_NODE_SIZE : textConfig;
                 pendingChildIds = childIds;
                 if (isConfigNode || editingTextNode) {
                     const childNodes: CanvasNodeData[] = childIds.map((id, index) => ({
@@ -2581,10 +2587,10 @@ function CanvasWorkspacePage() {
                         title: effectivePrompt.slice(0, 32) || "Generated Text",
                         position: {
                             x: parentPosition.x + parentConfig.width + 96,
-                            y: parentPosition.y + parentConfig.height / 2 - textConfig.height / 2 + (index - (textCount - 1) / 2) * (textConfig.height + 36),
+                            y: parentPosition.y + parentConfig.height / 2 - outputTextConfig.height / 2 + (index - (textCount - 1) / 2) * (outputTextConfig.height + 36),
                         },
-                        width: textConfig.width,
-                        height: textConfig.height,
+                        width: outputTextConfig.width,
+                        height: outputTextConfig.height,
                         metadata: { prompt: effectivePrompt, status: NODE_STATUS_LOADING, fontSize: 14 },
                     }));
                     setNodes((prev) => [...prev.map((node) => (node.id === nodeId && isConfigNode ? { ...node, metadata: { ...node.metadata, prompt: effectivePrompt, status: NODE_STATUS_LOADING, errorDetails: undefined } } : node)), ...childNodes]);
@@ -2612,18 +2618,20 @@ function CanvasWorkspacePage() {
                     const promptCount = Math.min(5, reversePromptResult.prompts.length);
                     const promptNodes = reversePromptResult.prompts.slice(0, 5).map((item, index) => {
                         const center = {
-                            x: parentPosition.x + parentConfig.width + 96 + textConfig.width + 96 + textConfig.width / 2,
-                            y: parentPosition.y + parentConfig.height / 2 - ((promptCount - 1) * (textConfig.height + 36)) / 2 + index * (textConfig.height + 36),
+                            x: parentPosition.x + parentConfig.width + 96 + REVERSE_PROMPT_RESULT_NODE_SIZE.width + 96 + REVERSE_PROMPT_RESULT_NODE_SIZE.width / 2,
+                            y: parentPosition.y + parentConfig.height / 2 - ((promptCount - 1) * (REVERSE_PROMPT_RESULT_NODE_SIZE.height + 40)) / 2 + index * (REVERSE_PROMPT_RESULT_NODE_SIZE.height + 40),
                         };
                         return {
                             ...createCanvasNode(CanvasNodeType.Text, center, { content: item.content, prompt: item.content, status: NODE_STATUS_SUCCESS, fontSize: 14 }),
+                            width: REVERSE_PROMPT_RESULT_NODE_SIZE.width,
+                            height: REVERSE_PROMPT_RESULT_NODE_SIZE.height,
                             title: `可连线提示词 ${item.index}｜${item.title}`.slice(0, 48),
                         };
                     });
                     setNodes((prev) => [
                         ...prev.map((node) =>
                             childIds.includes(node.id)
-                                ? { ...node, title: "反推分析", metadata: { ...node.metadata, content: reversePromptResult.analysis, status: NODE_STATUS_SUCCESS } }
+                                ? { ...node, title: "反推分析", width: REVERSE_PROMPT_RESULT_NODE_SIZE.width, height: REVERSE_PROMPT_RESULT_NODE_SIZE.height, metadata: { ...node.metadata, content: reversePromptResult.analysis, status: NODE_STATUS_SUCCESS } }
                                 : node.id === nodeId && isConfigNode
                                   ? { ...node, metadata: { ...node.metadata, status: NODE_STATUS_SUCCESS } }
                                   : node,

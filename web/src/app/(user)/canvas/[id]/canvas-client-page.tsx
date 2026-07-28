@@ -297,6 +297,73 @@ function splitReversePromptOutput(content: string) {
     return { analysis, prompts };
 }
 
+type ReversePromptSplitResult = NonNullable<ReturnType<typeof splitReversePromptOutput>>;
+
+function normalizePromptForSimilarity(value: string) {
+    return value
+        .replace(/本方案的核心变化点是/g, "")
+        .replace(/以用户上传的新产品图作为唯一(?:产品)?主体/g, "")
+        .replace(/保留新产品真实外观|纯白色背景|接近#?FFFFFF|不要复制参考图[^。；;]*/g, "")
+        .replace(/[\s，。、“”‘’：:；;,.!?！？（）()【】|｜\-—]/g, "")
+        .toLowerCase();
+}
+
+function bigrams(value: string) {
+    const text = normalizePromptForSimilarity(value);
+    if (text.length < 2) return new Set(text ? [text] : []);
+    return new Set(Array.from({ length: text.length - 1 }, (_, index) => text.slice(index, index + 2)));
+}
+
+function jaccardSimilarity(a: string, b: string) {
+    const left = bigrams(a);
+    const right = bigrams(b);
+    if (!left.size && !right.size) return 1;
+    let intersection = 0;
+    left.forEach((item) => {
+        if (right.has(item)) intersection += 1;
+    });
+    return intersection / (left.size + right.size - intersection || 1);
+}
+
+function reversePromptsAreTooSimilar(prompts: ReversePromptSplitResult["prompts"]) {
+    if (prompts.length < 2) return false;
+    let highSimilarityPairs = 0;
+    for (let index = 0; index < prompts.length; index += 1) {
+        for (let next = index + 1; next < prompts.length; next += 1) {
+            if (jaccardSimilarity(prompts[index].content, prompts[next].content) > 0.46) highSimilarityPairs += 1;
+        }
+    }
+    return highSimilarityPairs >= 4;
+}
+
+function buildReversePromptRewriteRequest(result: ReversePromptSplitResult) {
+    const promptList = result.prompts.map((item) => `【可连线提示词${item.index}｜${item.title}】\n${item.content}`).join("\n\n");
+    return `下面是一次失败的商业视觉反推结果。失败原因：5 个可连线提示词过于相似，基本都在重复主体位置、白底、包装真实、标签清晰、阴影和光影，生成图片会大差不差。
+
+请你只重写“5 个可连线提示词”，不要重写前面的分析。
+
+重写要求：
+1. 必须基于原分析中的固定要求，但不要把固定要求大段重复到每个方案开头。
+2. 每个方案第一句必须写“本方案的核心变化点是……”，核心变化点必须来自参考图中可见的具体视觉元素、局部区域、版式关系、图案结构、文字区处理或商业表达方法。
+3. 核心变化点不能是：主体居中、主体偏左、3/4 角度、纯白背景、阴影、光影、标签清晰、信息层级、包装真实、留白充足。这些是基础要求，不是方案差异。
+4. 每个方案必须明确“固定保留什么”和“具体改变什么”，但五个方案不能使用同一套句式。
+5. 五个方案的构图操作、视觉焦点、局部设计动作必须明显不同；如果两张图生成出来会差不多，请重写其中一个。
+6. 不要添加预设方向示例，不要套用固定风格类别，不要复制参考图品牌、产品名或原文案。
+
+输出格式必须严格如下：
+【可连线提示词1｜标题】
+提示词正文
+【可连线提示词2｜标题】
+提示词正文
+一直到【可连线提示词5｜标题】。
+
+原分析：
+${result.analysis}
+
+失败的 5 个提示词：
+${promptList}`;
+}
+
 function createCanvasNode(type: CanvasNodeType, position: Position, metadata?: CanvasNodeMetadata): CanvasNodeData {
     const spec = getNodeSpec(type);
     const id = `${type}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -2632,7 +2699,17 @@ function CanvasWorkspacePage() {
                 );
                 if (controller.signal.aborted) return;
                 const answerByNodeId = new Map(answers.map((item) => [item.nodeId, item.content]));
-                const reversePromptResult = isConfigNode && childIds.length === 1 && isReversePromptRequest(effectivePrompt) ? splitReversePromptOutput(answerByNodeId.get(childIds[0]) || streamed) : null;
+                let reversePromptResult = isConfigNode && childIds.length === 1 && isReversePromptRequest(effectivePrompt) ? splitReversePromptOutput(answerByNodeId.get(childIds[0]) || streamed) : null;
+                if (reversePromptResult?.prompts.length && reversePromptsAreTooSimilar(reversePromptResult.prompts)) {
+                    const rewritten = await requestImageQuestion(generationConfig, [{ role: "user", content: buildReversePromptRewriteRequest(reversePromptResult) }], () => {}, { signal: controller.signal, temperature: 1.05, topP: 0.98 });
+                    const rewrittenResult = splitReversePromptOutput(rewritten);
+                    if (rewrittenResult?.prompts.length) {
+                        reversePromptResult = {
+                            analysis: `${reversePromptResult.analysis}\n\n系统检测到第一版 5 个提示词相似度过高，已自动重写为差异更明显的 5 个方案。`,
+                            prompts: rewrittenResult.prompts,
+                        };
+                    }
+                }
                 if (reversePromptResult?.prompts.length) {
                     const promptCount = Math.min(5, reversePromptResult.prompts.length);
                     const promptNodes = reversePromptResult.prompts.slice(0, 5).map((item, index) => {

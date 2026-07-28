@@ -103,7 +103,7 @@ type GeminiPayload = {
     promptFeedback?: { blockReason?: string };
 };
 type GeminiStreamState = { buffer: string; text: string; toolCalls: ResponseToolCall[]; error?: string };
-type RequestOptions = { signal?: AbortSignal };
+type RequestOptions = { signal?: AbortSignal; temperature?: number; topP?: number };
 type OpenRouterImageReference = { type: "image_url"; image_url: { url: string } };
 type UrlImagePayload = {
     model: string;
@@ -783,6 +783,8 @@ async function requestChatCompletionResponse(config: AiConfig, messages: Respons
         model: config.model,
         messages: toChatMessages(withSystemMessage(config, messages)),
         stream: true,
+        ...(typeof options?.temperature === "number" ? { temperature: options.temperature } : {}),
+        ...(typeof options?.topP === "number" ? { top_p: options.topP } : {}),
         ...(tools?.length ? { tools, tool_choice: toolChoice } : {}),
     };
     const response = await fetch(aiApiUrl(config, "/chat/completions"), {
@@ -857,6 +859,13 @@ function toGeminiBody(config: AiConfig, messages: ResponseInputMessage[], extra?
         ...(systemText ? { systemInstruction: { parts: [{ text: systemText }] } } : {}),
         ...extra,
     };
+}
+
+function geminiGenerationConfig(options?: RequestOptions) {
+    const generationConfig: Record<string, unknown> = {};
+    if (typeof options?.temperature === "number") generationConfig.temperature = options.temperature;
+    if (typeof options?.topP === "number") generationConfig.topP = options.topP;
+    return Object.keys(generationConfig).length ? { generationConfig } : {};
 }
 
 function toGeminiContents(messages: ResponseInputMessage[]): GeminiContent[] {
@@ -1141,7 +1150,7 @@ export async function requestImageQuestion(config: AiConfig, messages: AiTextMes
     const requestConfig = resolveModelRequestConfig(config, config.model || config.textModel);
     try {
         if (requestConfig.apiFormat === "gemini") {
-            const answer = (await requestGeminiStreamingResponse(requestConfig, toGeminiBody(requestConfig, messages), onDelta, options)).content || "没有返回内容";
+            const answer = (await requestGeminiStreamingResponse(requestConfig, toGeminiBody(requestConfig, messages, geminiGenerationConfig(options)), onDelta, options)).content || "没有返回内容";
             if (answer === "没有返回内容") onDelta(answer);
             return answer;
         }

@@ -135,7 +135,13 @@ export function buildNodeResponseMessages(context: NodeGenerationContext): AiTex
     return [
         {
             role: "user",
-            content: [{ type: "text" as const, text: context.prompt }, ...context.referenceImages.map((image) => ({ type: "image_url" as const, image_url: { url: image.dataUrl } }))],
+            content: [
+                {
+                    type: "text" as const,
+                    text: `下面附带 ${context.referenceImages.length} 张参考图片。请先实际读取图片内容，再执行文字任务；图片本身是任务证据，不是文件名或装饰。${context.prompt}`,
+                },
+                ...context.referenceImages.map((image) => ({ type: "image_url" as const, image_url: { url: image.dataUrl } })),
+            ],
         },
     ];
 }

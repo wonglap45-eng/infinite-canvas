@@ -191,28 +191,24 @@ function buildImagePromptReversePreset(mode: ReversePromptMode) {
             : `本次反推用途：副图。
 允许迁移参考图真实可见的场景、氛围、信息表达和商业视觉关系，但不能复制参考产品内容。`;
 
-    return `请基于用户连接的参考图片做“商业视觉反推拆解”，输出中文。目标是先理解图片由什么元素构成、哪些内容不能动、哪些视觉关系可以迁移，再生成 5 条可以连接到用户新产品图的生图提示词。
+    return `请基于用户连接的参考图片做“商业视觉反推拆解”，输出中文。目标是先真正看懂这张图片，再生成 5 条可以连接到用户新产品图的独立生图提示词。
 
 ${modeRule}
 
 请严格遵守：
 1. 参考图只用于理解画面结构、信息组织和视觉表达；参考产品的品牌、产品名、包装文字、卖点和具体身份不能复制。
 2. 用户后续上传的新产品图决定最终产品的真实外观、品牌、包装、颜色、标签和比例。
-3. 不要预先规定五个方向，不要列出风格清单，不要把某一种风格强行套到所有图片上。
-4. 先根据当前图片建立“元素清单”和“不可变/可变化清单”，再让五条提示词各自采用一个不同的、确实来自图片的主要变化机制。
+3. 不要预先规定五个方向，不要列出风格清单，也不要把同一套构图换几个形容词。
+4. 先根据当前图片建立“元素清单”和“不可变/可变化清单”，再让五条提示词各自重新设计完整画面，而不是共享一个目标画面骨架。
 5. 五条提示词必须是最终生图指令，不是分析摘要；必须描述生成后画面会是什么样，包含产品关系、构图层次、文字区域和可见视觉元素。
-6. 五条提示词要自然具体，不能靠重复“高级、干净、真实、专业”制造差异。删除共同保真要求后，五条仍应是五张不同的设计稿。
+6. 五条提示词要自然具体，差异必须来自图片证据和独立构图决策，不能靠重复“高级、干净、真实、专业”制造差异。
 7. 参考图没有的元素不要补写；看不清的文字不要猜写。新图文字只使用用户产品真实可见的文字或明确提供的内容。
 
 输出格式：
-先输出简洁的参考图拆解和不可变/可变化判断，然后输出以下 5 个节点：
+先输出参考图拆解和不可变/可变化判断，然后输出以下 5 个节点。每个节点正文是一整段可直接交给图片模型的中文指令，不要再套用固定字段：
 【可连线提示词1｜标题】
 生成一张...
-【目标画面】...
-【独特变化】...
-【文字处理】...
-
-一直到【可连线提示词5｜标题】。五个标题和五个独特变化必须不同，不要输出空泛解释。`;
+直接写完整提示词正文。一直到【可连线提示词5｜标题】。五个标题和五个画面必须不同，不要输出空泛解释。`;
 }
 
 function isReversePromptRequest(prompt: string) {
@@ -220,7 +216,7 @@ function isReversePromptRequest(prompt: string) {
 }
 
 function splitReversePromptOutput(content: string) {
-    const text = content.trim();
+    const text = sanitizeReversePromptOutput(content.trim());
     const markerPattern = /【可连线提示词\s*([1-5])\s*(?:[｜|]\s*([^】]+))?】/g;
     const matches = Array.from(text.matchAll(markerPattern));
     if (!matches.length) return null;
@@ -249,6 +245,12 @@ function splitReversePromptOutput(content: string) {
 }
 
 type ReversePromptSplitResult = NonNullable<ReturnType<typeof splitReversePromptOutput>>;
+
+function sanitizeReversePromptOutput(content: string) {
+    return content
+        .replace(/\b(?:image|img)[-_ ]?\d+\.(?:png|jpe?g|webp)\b/gi, "参考图片")
+        .replace(/\b(?:image|img)[-_ ]?\d+\b/gi, "参考图片");
+}
 
 function buildReversePromptAnalysisOnlyRequest(prompt: string) {
     const modeRule = prompt.includes("本次反推用途：主图")
@@ -280,35 +282,33 @@ function buildReversePromptPlansRequest(analysis: string, sourcePrompt: string) 
         ? `本次用途是主图。五个提示词都必须使用纯白或接近纯白背景，并以用户新产品作为唯一产品主体。不要添加人物、生活场景或参考图品牌。白底、产品真实、包装清晰只是共同底线，不能占据每条提示词的主要篇幅，也不能被当成五种差异。`
         : `本次用途是副图。五个提示词允许迁移参考图的氛围、信息表达、背景关系、构图节奏和商业视觉语言，但必须各自形成明显不同的画面。`;
 
-    return `你现在仍然可以看到原参考图片，下面同时附有第一步的拆解分析。请先以原图为主要证据，再用分析校对细节，生成 5 个可直接连线使用的中文 AI 生图提示词。
+    return `你现在仍然可以看到原参考图片，下面同时附有第一步的拆解分析。请先真正阅读原图，再用分析校对细节，生成 5 个可直接连线使用的中文 AI 生图提示词。
 
 ${modeRule}
 
-你的目标不是复述分析，也不是输出“迁移某某结构”的说明。你的目标是写出 5 条真正可以交给图片模型执行的完整生图提示词，让员工把每条提示词连接到自己的新产品图后，得到 5 张一眼可区分的主图/副图。
+你的目标不是复述分析，也不是输出“迁移某某结构”的说明。你的目标是写出 5 条真正可以交给图片模型执行的完整生图提示词，让员工把每条提示词连接到自己的新产品图后，得到 5 张一眼可区分的主图/副图。每条提示词都必须像设计师已经做完一张独立设计稿后写下的执行单。
 
 请先在心里完成判断，但不要把这段判断写成五个提示词：
 - 参考图里实际有什么元素，哪些是原图产品自身内容；
 - 哪些构成关系可以迁移到用户产品，哪些必须舍弃；
 - 如何让五条提示词分别选择参考图中不同的视觉机制，而不是共同模板换形容词。
 
-最终只输出 5 个完整提示词节点，不要输出分析摘要。
+最终只输出 5 个完整提示词节点，不要输出分析摘要，不要在提示词里提及 image_0.png、图片文件名、模型、API 或本次对话。
 
 硬性要求：
 1. 每个节点必须是完整生图提示词，不是分析说明。正文第一句必须以“生成一张...”开头，并直接描述最终画面。
-2. 每条都必须以用户上传的新产品图为唯一产品主体，保留新产品的真实外观、品牌、包装结构、颜色、标签位置和比例。
+2. 每条都必须以用户上传的新产品图为唯一产品主体，保留新产品真实外观、品牌、包装结构、颜色、标签位置和比例；不能把参考产品带进新图。
 3. 只迁移参考图可见的构图关系、信息组织、局部图形、材质、纹理或商业表达，不复制参考图品牌、产品名、包装文字、具体卖点或不存在的信息。
-4. 五条提示词必须分别选择参考图中的不同视觉机制作为主变化。五个主变化必须是图片证据推导出来的，不能用预设方向、固定风格名称或随机形容词代替。
+4. 五条必须是五个独立的画面设计：产品位置、阅读顺序、空间分配、前后层次、信息区组织和视觉重心至少有多项不同。差异必须由原图观察推导，不能用预设方向名称或随机形容词代替。
 5. 每条都要具体写清最终画面中的产品位置、层次关系、可见信息区域、构图重心、视觉动线和图像质感；不能只写“高级、简洁、科技感”。
 6. 文字处理必须针对用户自己的产品：保留用户产品图上真实可见且需要保留的文字，重新组织文字位置和层级；绝不照搬参考图文字，也不凭空编造用户产品没有的规格、功效或卖点。主图不得添加大段外部营销文案。
-7. 五条提示词不能共用同一个“目标画面”骨架后只替换一个名词。删除每条的共同保真要求后，五条仍然必须是五个不同的画面设计。
-8. 每条建议 320-520 个中文字，内容要能直接执行，不要写成泛泛的分析报告。
+7. 不要在每条提示词重复同一段“固定保留/白底/唯一主体”套话，用自然语言融入必要约束，把篇幅用在五个不同的画面设计上。
+8. 每条 260-520 个中文字，内容要能直接执行，不要写成泛泛的分析报告。
 
 输出格式必须严格如下：
 【可连线提示词1｜标题】
 生成一张...
-【目标画面】...
-【独特变化】...
-【文字处理】...
+直接写完整提示词正文，不要添加固定字段。
 
 【可连线提示词2｜标题】
 ...
@@ -316,93 +316,6 @@ ${modeRule}
 
 参考图拆解分析：
 ${compactAnalysis}`;
-}
-
-function buildReversePromptRepairRequest(analysis: string, candidateOutput: string, sourcePrompt: string) {
-    const modeRule = sourcePrompt.includes("本次反推用途：主图")
-        ? "主图仍然必须使用白色或接近白色背景，并以用户新产品作为唯一产品主体；这些是共同底线，不是变化方向。"
-        : "副图可以保留参考图的场景和氛围，但每条必须形成不同的最终画面。";
-    const compactCandidate = candidateOutput.length > 7600 ? candidateOutput.slice(0, 7600) : candidateOutput;
-    return `原参考图片仍然附在本次请求中。下面是一次未通过质量检查的五条提示词草稿，请你根据原图证据重新改写，不要解释原因，也不要原样重复草稿。
-
-${modeRule}
-
-这次必须先在内部完成一个“差异账本”：从参考图确实存在的构图关系、产品层次、局部图形、文字组织、材质或视觉动线中，选择 5 个互不相同的主变化，每个主变化只能归属于一条提示词。不要使用固定方向清单，不要为了制造差异随意添加参考图没有的元素。
-
-重新输出 5 条完整、可直接交给图片模型执行的中文提示词。每条正文第一句必须以“生成一张...”开头，并且必须包含：
-- 【目标画面】：直接描述最终画面，不是分析；
-- 【独特变化】：只写这一条独有的、来自原图的视觉机制，不能与其他四条重复；
-- 【文字处理】：只使用用户新产品图中真实存在或可以确认的文字，不复制参考图文案。
-
-删除共同的产品保真要求后，五条仍必须是五张明显不同的设计稿。不要写“换一种风格”“改变光影”这种空泛差异，也不要只替换颜色、角度或形容词。
-
-输出格式：
-【可连线提示词1｜标题】
-生成一张...
-【目标画面】...
-【独特变化】...
-【文字处理】...
-
-一直到【可连线提示词5｜标题】，不要输出分析摘要。
-
-参考图拆解分析：
-${analysis}
-
-未通过的草稿：
-${compactCandidate}`;
-}
-
-function normalizePromptForSimilarity(value: string) {
-    return value
-        .replace(/本方案的核心变化点是/g, "")
-        .replace(/以用户上传的新产品图作为唯一(?:产品)?主体/g, "")
-        .replace(/保留新产品真实外观|纯白色背景|接近#?FFFFFF|不要复制参考图[^。；;]*/g, "")
-        .replace(/[\s，。、“”‘’：:；;,.!?！？（）()【】|｜\-—]/g, "")
-        .toLowerCase();
-}
-
-function reversePromptSection(value: string, section: "目标画面" | "独特变化") {
-    const pattern = new RegExp(`【${section}】([\\s\\S]*?)(?=【(?:目标画面|独特变化|文字处理|可连线提示词)|$)`);
-    return value.match(pattern)?.[1]?.trim() || "";
-}
-
-function bigrams(value: string) {
-    const text = normalizePromptForSimilarity(value);
-    if (text.length < 2) return new Set(text ? [text] : []);
-    return new Set(Array.from({ length: text.length - 1 }, (_, index) => text.slice(index, index + 2)));
-}
-
-function jaccardSimilarity(a: string, b: string) {
-    const left = bigrams(a);
-    const right = bigrams(b);
-    if (!left.size && !right.size) return 1;
-    let intersection = 0;
-    left.forEach((item) => {
-        if (right.has(item)) intersection += 1;
-    });
-    return intersection / (left.size + right.size - intersection || 1);
-}
-
-function reversePromptsAreTooSimilar(prompts: ReversePromptSplitResult["prompts"]) {
-    if (prompts.length !== 5) return true;
-    const titles = prompts.map((prompt) => normalizePromptForSimilarity(prompt.title));
-    if (new Set(titles).size < 4) return true;
-
-    const variationSections = prompts.map((prompt) => reversePromptSection(prompt.content, "独特变化"));
-    const targetSections = prompts.map((prompt) => reversePromptSection(prompt.content, "目标画面"));
-    if (variationSections.some((section) => section.length < 24) || targetSections.some((section) => section.length < 40)) return true;
-
-    let highSimilarityPairs = 0;
-    let duplicateVariationPairs = 0;
-    let duplicateTargetPairs = 0;
-    for (let index = 0; index < prompts.length; index += 1) {
-        for (let next = index + 1; next < prompts.length; next += 1) {
-            if (jaccardSimilarity(prompts[index].content, prompts[next].content) > 0.72) highSimilarityPairs += 1;
-            if (jaccardSimilarity(variationSections[index], variationSections[next]) > 0.72) duplicateVariationPairs += 1;
-            if (jaccardSimilarity(targetSections[index], targetSections[next]) > 0.82) duplicateTargetPairs += 1;
-        }
-    }
-    return highSimilarityPairs >= 2 || duplicateVariationPairs >= 2 || duplicateTargetPairs >= 3;
 }
 
 function createCanvasNode(type: CanvasNodeType, position: Position, metadata?: CanvasNodeMetadata): CanvasNodeData {
@@ -2749,18 +2662,8 @@ function CanvasWorkspacePage() {
                                       generationConfig,
                                       buildNodeResponseMessages({ ...generationContext, prompt: buildReversePromptPlansRequest(analysisContent, effectivePrompt) }),
                                       () => {},
-                                      { signal: controller.signal, temperature: 1.08, topP: 0.98, maxTokens: 4200 },
+                                      { signal: controller.signal, temperature: 1.12, topP: 0.99, maxTokens: 5200 },
                                   );
-                                  const firstPromptResult = splitReversePromptOutput(promptOutput || "");
-                                  if (firstPromptResult?.prompts.length && reversePromptsAreTooSimilar(firstPromptResult.prompts)) {
-                                      const repairedPromptOutput = await requestImageQuestion(
-                                          generationConfig,
-                                          buildNodeResponseMessages({ ...generationContext, prompt: buildReversePromptRepairRequest(analysisContent, promptOutput, effectivePrompt) }),
-                                          () => {},
-                                          { signal: controller.signal, temperature: 1.16, topP: 0.99, maxTokens: 4200 },
-                                      );
-                                      if (repairedPromptOutput.trim()) promptOutput = repairedPromptOutput;
-                                  }
                                   streamed = `${analysisContent}\n\n${promptOutput}`;
                                   return [{ nodeId: targetNodeId, content: streamed }];
                               } finally {
@@ -2783,27 +2686,7 @@ function CanvasWorkspacePage() {
                 if (controller.signal.aborted) return;
                 const answerByNodeId = new Map(answers.map((item) => [item.nodeId, item.content]));
                 let reversePromptResult = isConfigNode && childIds.length === 1 && isReversePromptRequest(effectivePrompt) ? splitReversePromptOutput(answerByNodeId.get(childIds[0]) || streamed) : null;
-                if (reversePromptResult?.prompts.length && reversePromptsAreTooSimilar(reversePromptResult.prompts)) {
-                    const qualityMessage = "系统检测到这 5 个提示词相似度过高，已拦截输出，避免继续用相似提示词浪费生图额度。请重新生成，系统会按新的拆解规则要求模型给出更分散的方案。";
-                    setNodes((prev) =>
-                        prev.map((node) =>
-                            childIds.includes(node.id)
-                                ? {
-                                      ...node,
-                                      title: "反推质量检查未通过",
-                                      width: REVERSE_PROMPT_RESULT_NODE_SIZE.width,
-                                      height: REVERSE_PROMPT_RESULT_NODE_SIZE.height,
-                                      metadata: { ...node.metadata, content: `${reversePromptResult.analysis}\n\n${qualityMessage}`, status: NODE_STATUS_ERROR, errorDetails: qualityMessage },
-                                  }
-                                : node.id === nodeId && isConfigNode
-                                  ? { ...node, metadata: { ...node.metadata, status: NODE_STATUS_ERROR, errorDetails: qualityMessage } }
-                                  : node,
-                        ),
-                    );
-                    message.error(qualityMessage);
-                    return;
-                }
-                if (reversePromptResult?.prompts.length) {
+                if (reversePromptResult?.prompts.length === 5) {
                     const promptCount = Math.min(5, reversePromptResult.prompts.length);
                     const promptNodes = reversePromptResult.prompts.slice(0, 5).map((item, index) => {
                         const center = {

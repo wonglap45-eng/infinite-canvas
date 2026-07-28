@@ -21,6 +21,7 @@ type UpstreamTarget = {
 type RequestPayloadInfo = {
     model: string;
     hasImageInput: boolean;
+    imageInputCount: number;
     jsonBody?: Record<string, unknown>;
 };
 
@@ -109,22 +110,31 @@ function isImageInputValue(value: unknown): boolean {
     return record.type === "image_url" || record.type === "input_image" || isImageInputValue(record.content) || isImageInputValue(record.messages) || isImageInputValue(record.input);
 }
 
+function countImageInputs(value: unknown): number {
+    if (!value) return 0;
+    if (Array.isArray(value)) return value.reduce((total, item) => total + countImageInputs(item), 0);
+    if (typeof value !== "object") return 0;
+    const record = value as Record<string, unknown>;
+    const own = record.type === "image_url" || record.type === "input_image" ? 1 : 0;
+    return own + Object.entries(record).reduce((total, [, item]) => total + countImageInputs(item), 0);
+}
+
 async function requestPayloadInfo(request: NextRequest): Promise<RequestPayloadInfo> {
-    if (request.method === "GET" || request.method === "HEAD") return { model: "", hasImageInput: false };
+    if (request.method === "GET" || request.method === "HEAD") return { model: "", hasImageInput: false, imageInputCount: 0 };
     const contentType = request.headers.get("content-type") || "";
     try {
         if (contentType.includes("application/json")) {
             const payload = (await request.clone().json()) as Record<string, unknown>;
-            return { model: typeof payload.model === "string" ? payload.model : "", hasImageInput: isImageInputValue(payload), jsonBody: payload };
+            return { model: typeof payload.model === "string" ? payload.model : "", hasImageInput: isImageInputValue(payload), imageInputCount: countImageInputs(payload), jsonBody: payload };
         }
         if (contentType.includes("multipart/form-data")) {
             const model = (await request.clone().formData()).get("model");
-            return { model: typeof model === "string" ? model : "", hasImageInput: false };
+            return { model: typeof model === "string" ? model : "", hasImageInput: false, imageInputCount: 0 };
         }
     } catch {
-        return { model: "", hasImageInput: false };
+        return { model: "", hasImageInput: false, imageInputCount: 0 };
     }
-    return { model: "", hasImageInput: false };
+    return { model: "", hasImageInput: false, imageInputCount: 0 };
 }
 
 function upstreamBaseUrl(target: UpstreamTarget) {
@@ -207,6 +217,15 @@ async function proxyOpenAI(request: NextRequest, context: RouteContext) {
         const payloadInfo = await requestPayloadInfo(request);
         const targetModel = payloadInfo.hasImageInput && visionModel() && payloadInfo.jsonBody ? visionModel() : payloadInfo.model;
         const target = resolveUpstreamTarget(path, targetModel, payloadInfo.hasImageInput);
+        console.log("AI proxy dispatch", {
+            path: request.nextUrl.pathname,
+            requestedModel: payloadInfo.model,
+            targetModel,
+            route: target.kind,
+            hasImageInput: payloadInfo.hasImageInput,
+            imageInputCount: payloadInfo.imageInputCount,
+            visionModel: payloadInfo.hasImageInput ? visionModel() : undefined,
+        });
         if (payloadInfo.hasImageInput && envValue("OPENAI_REJECT_IMAGE_TEXT_WITHOUT_VISION").toLowerCase() === "true" && !visionModel() && target.kind === "text") {
             return NextResponse.json(
                 {
@@ -278,6 +297,9 @@ async function proxyOpenAI(request: NextRequest, context: RouteContext) {
             path: request.nextUrl.pathname,
             model,
             route: target.kind,
+            hasImageInput: payloadInfo.hasImageInput,
+            imageInputCount: payloadInfo.imageInputCount,
+            visionModel: payloadInfo.hasImageInput ? visionModel() : undefined,
             status: response.status,
             durationMs: Date.now() - startedAt,
             contentType: response.headers.get("content-type"),

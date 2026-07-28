@@ -282,7 +282,7 @@ function buildReversePromptPlansRequest(analysis: string, sourcePrompt: string) 
         ? `本次用途是主图。五个提示词都必须使用纯白或接近纯白背景，并以用户新产品作为唯一产品主体。不要添加人物、生活场景或参考图品牌。白底、产品真实、包装清晰只是共同底线，不能占据每条提示词的主要篇幅，也不能被当成五种差异。`
         : `本次用途是副图。五个提示词允许迁移参考图的氛围、信息表达、背景关系、构图节奏和商业视觉语言，但必须各自形成明显不同的画面。`;
 
-    return `你现在仍然可以看到原参考图片，下面同时附有第一步的拆解分析。请先真正阅读原图，再用分析校对细节，生成 5 个可直接连线使用的中文 AI 生图提示词。
+    return `下面附有视觉模型根据原参考图片完成的第一步拆解分析。请把这份分析当作图片事实依据，不要凭空补充原图没有的元素，生成 5 个可直接连线使用的中文 AI 生图提示词。
 
 ${modeRule}
 
@@ -2654,13 +2654,13 @@ function CanvasWorkspacePage() {
                                           streamed = text;
                                           setNodes((prev) => prev.map((node) => (node.id === targetNodeId ? { ...node, title: "反推分析中", type: CanvasNodeType.Text, metadata: { ...node.metadata, content: text, status: NODE_STATUS_LOADING } } : node)));
                                       },
-                                      { signal: controller.signal, temperature: 0.35, topP: 0.85, maxTokens: 1800 },
+                                      { signal: controller.signal, temperature: 0.3, topP: 0.85, maxTokens: 3000 },
                                   );
                                   if (controller.signal.aborted) return [{ nodeId: targetNodeId, content: analysis || analysisStreamed }];
                                   const analysisContent = analysis || analysisStreamed;
                                   let promptOutput = await requestImageQuestion(
                                       generationConfig,
-                                      buildNodeResponseMessages({ ...generationContext, prompt: buildReversePromptPlansRequest(analysisContent, effectivePrompt) }),
+                                      [{ role: "user", content: buildReversePromptPlansRequest(analysisContent, effectivePrompt) }],
                                       () => {},
                                       { signal: controller.signal, temperature: 1.12, topP: 0.99, maxTokens: 5200 },
                                   );

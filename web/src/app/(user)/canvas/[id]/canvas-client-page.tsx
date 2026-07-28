@@ -104,8 +104,9 @@ const NODE_STATUS_IDLE = "idle" as const;
 const NODE_STATUS_LOADING = "loading" as const;
 const NODE_STATUS_SUCCESS = "success" as const;
 const NODE_STATUS_ERROR = "error" as const;
-const LONG_PROMPT_NODE_SIZE = { width: 620, height: 420 };
-const REVERSE_PROMPT_RESULT_NODE_SIZE = { width: 640, height: 460 };
+const READABLE_TEXT_FONT_SIZE = 16;
+const LONG_PROMPT_NODE_SIZE = { width: 760, height: 540 };
+const REVERSE_PROMPT_RESULT_NODE_SIZE = { width: 720, height: 520 };
 const IMAGE_PROMPT_REVERSE_PRESET = `请根据参考图片反推出“这张图是如何被构建出来的”，生成一段可复用到其他产品上的 AI 生图提示词。
 
 要求：
@@ -177,7 +178,7 @@ const IMAGE_PROMPT_REVERSE_PRESET_V2 = `请基于参考图片做一次“商业�
 列出迁移到新产品图时必须固定的要求：只使用新产品图作为唯一产品主体；保留新产品真实外观、品牌、瓶型/盒型、包装比例和标签位置；不要凭空改品牌、改包装、改产品类别、添加不存在的卖点。
 
 十三、5 个可连线提示词
-给出 5 个同一视觉体系下的中文提示词，分别偏向不同方向，例如：原图结构复刻版、极简高端版、功能卖点版、材质近景版、A+ 详情版。每个提示词必须是独立完整的中文生图提示词，必须强调“以用户上传的新产品图作为唯一产品主体”，必须包含文字区域应该如何写：标题区写产品核心身份，副标题写一句利益点，底部/侧边卖点区写 3 个短卖点和简短说明；同时要求不要复制参考图原文案、品牌或具体产品名。每个提示词必须使用【可连线提示词N｜标题】标记开头。`;
+根据当前参考图本身独立思考，给出 5 个明显不同的中文提示词，不要套用固定方向或示例模板。每个提示词必须是独立完整的中文生图提示词，必须强调“以用户上传的新产品图作为唯一产品主体”，必须包含文字区域应该如何写；同时要求不要复制参考图原文案、品牌或具体产品名。每个提示词必须使用【可连线提示词N｜标题】标记开头。`;
 
 const REVERSE_PROMPT_NODE_MARKER = "【可连线提示词";
 type ReversePromptMode = "main" | "secondary";
@@ -192,66 +193,68 @@ function buildImagePromptReversePreset(mode: ReversePromptMode) {
 3. 产品必须是唯一绝对主体，居中或轻微偏中，画面干净，主体占画面约 75%-90%。
 4. 不要出现额外道具、人物、手、桌面、装饰物、虚构配件、夸张光效、复杂图标或大段说明文字。
 5. 可以保留产品包装上本来存在的文字、logo 和标签，但不要额外生成新的营销文字。
-6. 五个提示词必须在白底主图规则内做明显差异：正面居中主图、轻微 3/4 角度主图、套装/组合陈列主图、标签清晰细节强化主图、带轻微阴影和留白的高级主图。`
+6. 五个提示词必须在白底主图规则内，由你根据当前参考图的真实结构独立发散，不要套用固定角度、固定陈列或固定模板。`
             : `本次反推用途：副图。
 副图规则：
 1. 允许基于参考图迁移构图、氛围、卖点表达、背景、光线和商业视觉风格。
 2. 五个提示词必须生成五种明显不同的副图方向，不能只是同一段提示词轻微换词。
-3. 五个方向必须分别覆盖：场景生活方式图、成分/功效氛围图、功能卖点信息图、材质/质感近景图、A+ 详情页横幅或品牌故事图。
+3. 五个方向必须完全根据当前参考图自己判断，不要套用预设类别、预设风格或固定模板。
 4. 每个提示词都必须说明不同的背景、构图、文字区域、视觉重点和用途，让生成出来的五张图一眼就能看出不是同一模板。`;
 
-    const promptTopics =
-        mode === "main"
-            ? "主图正面居中版、主图轻微 3/4 角度版、主图套装陈列版、主图标签清晰版、主图高级留白版"
-            : "场景生活方式版、成分功效氛围版、功能卖点信息图版、材质质感近景版、A+ 详情页横幅版";
-
-    return `请基于参考图片做一次“商业视觉反推拆解”，输出必须是中文，目标是让员工把这个结构迁移到自己的产品图上，生成类似构图、类似质感、类似商业表达的新图片。
+    return `请基于参考图片做一次“商业视觉反推拆解”，输出必须是中文。目标不是复制参考图，而是理解这张图是如何构建出来的，并把它转化为可迁移到用户自己产品上的 AI 生图提示词。
 
 ${modeRule}
 
 你的身份：
-你是一名 Amazon 资深电商美工、产品摄影指导、商业视觉拆解师和 AI 生图提示词工程师。你需要像专业设计复盘一样，把图片到底是如何构建出来的讲清楚。
+你是一名 Amazon 资深电商美工、产品摄影指导、商业视觉拆解师和 AI 生图提示词工程师。你需要像专业设计师复盘图片一样，判断这张图的结构、视觉逻辑、商业表达和可变化空间。
 
 核心原则：
-1. 参考图只用于分析构图、版式、图层、背景、光线、色彩、镜头和商业表达，不要要求复制参考图里的品牌、logo、包装文字、具体卖点或产品身份。
+1. 参考图只用于分析构图、背景、颜色、字体、排版、光影、材质、信息层级和商业表达。
 2. 最终提示词必须写成“以用户后续上传的新产品图作为唯一产品主体”，新产品图决定品牌、瓶型、包装比例、标签位置、颜色和真实外观。
-3. 可以识别参考图文字，但必须标注为“参考图可见文字/原图文案结构”，不能要求新图继续使用同一产品名、同一品牌名或同一文案。
-4. 必须专门拆解文字信息：如果文字清晰可见，请列出参考图中可见的标题、副标题、图标下卖点标题和说明文字；同时说明字体风格、大小层级、大小写、对齐方式、字距、行距、颜色和位置。如果文字无法完全识别，请说明“部分文字不可读”，不要编造。
-5. 五个可连线提示词必须互相差异明显，不能复用同一段结构后只替换少量形容词；每个提示词都要有不同的构图策略、背景策略、文字策略和视觉重点。
-6. 输出不要寒暄，不要写“你好”，不要说废话。
+3. 不要复制参考图中的品牌、产品名、具体文案、包装文字或具体卖点。
+4. 你不能机械套用固定方向，必须根据当前参考图本身独立判断，生成 5 个明显不同的可行方案。
+5. 这 5 个方案必须来自对参考图的真实理解，而不是简单换几个形容词。
+6. 每个方案都要在构图、画面重心、背景处理、信息排版、装饰元素、光影或商业表达上有明显差异。
+7. 不要寒暄，不要解释过程，直接输出结果。
 
 请严格按以下结构输出：
 
 一、画面定位
-说明参考图属于什么商业图类型、用途和消费者感受。
+说明这张图属于什么商业图类型，用于什么场景，整体想传达什么感觉。
 
 二、图片是如何构成的
-分层拆解背景层、主体产品层、文字/信息区、装饰元素、道具、阴影、反光、前后景关系；明确主体数量、主体位置、主体占画面比例、留白比例、画面重心和层级关系。
+拆解画面中的主体位置、主体占比、前后层次、背景方式、文字区域、装饰元素、光线方向、阴影、反光、材质质感、留白比例、视觉重心。
 
 三、文字与信息文案结构
-逐项列出参考图可见文字，并说明这些文字分别属于主标题、副标题、功能卖点标题、功能说明、辅助标签还是图标说明。分析文案写法，并说明新产品图中应该如何替换成新产品自己的文案。
+如果参考图中有文字，请分析：
+主标题、副标题、卖点文字、辅助说明、图标说明分别在什么位置；
+字体大小、颜色、对齐方式、层级关系如何；
+新产品图中应该如何替换成用户自己产品的文案。
+如果文字不可读，请说明“部分文字不可读”，不要编造。
 
 四、视觉动线
-说明用户视线从哪里进入，经过哪些标题、主体、装饰线条、功能信息，最后停在哪里。
+说明用户视线从哪里进入，经过哪些标题、主体、装饰线条、功能信息，最后停在哪里；如有流体、烟雾、光效、线条、色块、纹理或植物等元素，要说明它们怎样引导视线。
 
-五、版面比例
-说明整体画幅比例、主体区域比例、文字区比例、背景/留白比例、左右/上下分区方式。
+五、可迁移的视觉方法
+总结这张图真正值得迁移的设计方法。注意：这里迁移的是视觉方法，不是迁移具体品牌、产品、文案或包装。
 
-六、配色、光线和材质
-拆解主色、辅助色、背景色、高光色、文字色、主光方向、阴影、反光、材质表现和真实摄影/3D 渲染感。
+六、5 个可连线提示词
+请根据参考图本身，独立思考并生成 5 个明显不同的中文生图提示词。
+每个提示词必须：
+- 以用户上传的新产品图作为唯一产品主体；
+- 保留新产品真实外观、品牌、包装结构、颜色、标签位置和产品比例；
+- 只迁移参考图的构图方法、视觉氛围、信息组织方式和商业表达；
+- 不复制参考图品牌、产品名、包装文字、具体卖点或不存在的信息；
+- 明确说明背景、构图、主体位置、文字区域、装饰元素、光影、材质和画面质量；
+- 5 个提示词之间必须明显不同，不能只是同一方案换词。
 
-七、优点、不足和可迁移公式
-说明值得迁移的地方、不建议迁移的地方，并用一句公式总结可迁移方法。
-
-八、5 个可连线提示词
-必须输出 5 个独立完整的中文生图提示词，方向分别是：${promptTopics}。
-每个提示词必须用固定标记开头：
+输出格式必须严格如下：
 【可连线提示词1｜标题】
 提示词正文
 【可连线提示词2｜标题】
 提示词正文
 一直到【可连线提示词5｜标题】。
-每个提示词都必须强调“以用户上传的新产品图作为唯一产品主体”，必须说明文字区域应该怎么写；不能复制参考图原文案、品牌或具体产品名。`;
+不要添加固定方向示例，不要把任何示例方向写入结果。`;
 }
 
 function isReversePromptRequest(prompt: string) {
@@ -302,6 +305,19 @@ function createCanvasNode(type: CanvasNodeType, position: Position, metadata?: C
         width: spec.width,
         height: spec.height,
         metadata: { ...spec.metadata, ...metadata },
+    };
+}
+
+function createSizedTextNode(position: Position, size: { width: number; height: number }, metadata?: CanvasNodeMetadata): CanvasNodeData {
+    const node = createCanvasNode(CanvasNodeType.Text, position, metadata);
+    return {
+        ...node,
+        position: {
+            x: position.x - size.width / 2,
+            y: position.y - size.height / 2,
+        },
+        width: size.width,
+        height: size.height,
     };
 }
 
@@ -1782,13 +1798,11 @@ function CanvasWorkspacePage() {
             const configSpec = NODE_DEFAULT_SIZE[CanvasNodeType.Config];
             const centerY = node.position.y + node.height / 2;
             const textNode = {
-                ...createCanvasNode(
-                    CanvasNodeType.Text,
+                ...createSizedTextNode(
                     { x: node.position.x + node.width + gap + LONG_PROMPT_NODE_SIZE.width / 2, y: centerY },
-                    { content: reversePrompt, prompt: reversePrompt, status: NODE_STATUS_SUCCESS, fontSize: 14 },
+                    LONG_PROMPT_NODE_SIZE,
+                    { content: reversePrompt, prompt: reversePrompt, status: NODE_STATUS_SUCCESS, fontSize: READABLE_TEXT_FONT_SIZE },
                 ),
-                width: LONG_PROMPT_NODE_SIZE.width,
-                height: LONG_PROMPT_NODE_SIZE.height,
                 title: mode === "main" ? "主图反推提示词" : "副图反推提示词",
             };
             const configNode = {
@@ -1829,8 +1843,8 @@ function CanvasWorkspacePage() {
                 title: "选择反推用途",
                 content: (
                     <div className="space-y-2 text-sm leading-relaxed">
-                        <p>主图：生成 5 个白底主图方向，产品背景固定白色，不加场景和复杂装饰。</p>
-                        <p>副图：生成 5 个差异明显的副图方向，例如场景、成分氛围、功能卖点、材质近景和 A+ 横幅。</p>
+                        <p>主图：生成 5 个白底主图方案，产品背景固定白色，不加场景和复杂装饰。</p>
+                        <p>副图：根据参考图本身独立发散，生成 5 个差异明显的商业视觉方案，不套用固定方向。</p>
                     </div>
                 ),
                 okText: "主图",
@@ -1851,9 +1865,7 @@ function CanvasWorkspacePage() {
             const anchor = selectedImages[0];
             const center = anchor ? { x: anchor.position.x + anchor.width + 120 + LONG_PROMPT_NODE_SIZE.width / 2, y: anchor.position.y + anchor.height / 2 } : getCanvasCenter();
             const node = {
-                ...createCanvasNode(CanvasNodeType.Text, center, { content: text, prompt: text, status: NODE_STATUS_SUCCESS, fontSize: 14 }),
-                width: LONG_PROMPT_NODE_SIZE.width,
-                height: LONG_PROMPT_NODE_SIZE.height,
+                ...createSizedTextNode(center, LONG_PROMPT_NODE_SIZE, { content: text, prompt: text, status: NODE_STATUS_SUCCESS, fontSize: READABLE_TEXT_FONT_SIZE }),
                 title: "生成提示词",
             };
 
@@ -2412,7 +2424,7 @@ function CanvasWorkspacePage() {
                                               title: prompt.slice(0, 32) || "Prompt",
                                               width: parentConfig.width,
                                               height: parentConfig.height,
-                                              metadata: { ...node.metadata, content: prompt, prompt, status: NODE_STATUS_SUCCESS, fontSize: 14, errorDetails: undefined },
+                                              metadata: { ...node.metadata, content: prompt, prompt, status: NODE_STATUS_SUCCESS, fontSize: READABLE_TEXT_FONT_SIZE, errorDetails: undefined },
                                           }
                                 : node,
                         ),
@@ -2591,7 +2603,7 @@ function CanvasWorkspacePage() {
                         },
                         width: outputTextConfig.width,
                         height: outputTextConfig.height,
-                        metadata: { prompt: effectivePrompt, status: NODE_STATUS_LOADING, fontSize: 14 },
+                        metadata: { prompt: effectivePrompt, status: NODE_STATUS_LOADING, fontSize: READABLE_TEXT_FONT_SIZE },
                     }));
                     setNodes((prev) => [...prev.map((node) => (node.id === nodeId && isConfigNode ? { ...node, metadata: { ...node.metadata, prompt: effectivePrompt, status: NODE_STATUS_LOADING, errorDetails: undefined } } : node)), ...childNodes]);
                     setConnections((prev) => [...prev, ...childIds.map((childId) => ({ id: nanoid(), fromNodeId: nodeId, toNodeId: childId }))]);
@@ -2622,9 +2634,7 @@ function CanvasWorkspacePage() {
                             y: parentPosition.y + parentConfig.height / 2 - ((promptCount - 1) * (REVERSE_PROMPT_RESULT_NODE_SIZE.height + 40)) / 2 + index * (REVERSE_PROMPT_RESULT_NODE_SIZE.height + 40),
                         };
                         return {
-                            ...createCanvasNode(CanvasNodeType.Text, center, { content: item.content, prompt: item.content, status: NODE_STATUS_SUCCESS, fontSize: 14 }),
-                            width: REVERSE_PROMPT_RESULT_NODE_SIZE.width,
-                            height: REVERSE_PROMPT_RESULT_NODE_SIZE.height,
+                            ...createSizedTextNode(center, REVERSE_PROMPT_RESULT_NODE_SIZE, { content: item.content, prompt: item.content, status: NODE_STATUS_SUCCESS, fontSize: READABLE_TEXT_FONT_SIZE }),
                             title: `可连线提示词 ${item.index}｜${item.title}`.slice(0, 48),
                         };
                     });
@@ -3073,8 +3083,8 @@ function CanvasWorkspacePage() {
                     onLeave={hideNodeToolbar}
                     onInfo={(node) => setInfoNodeId(node.id)}
                     onEditText={openTextEditor}
-                    onDecreaseFont={(node) => handleFontSizeChange(node.id, Math.max(10, (node.metadata?.fontSize || 14) - 2))}
-                    onIncreaseFont={(node) => handleFontSizeChange(node.id, Math.min(32, (node.metadata?.fontSize || 14) + 2))}
+                    onDecreaseFont={(node) => handleFontSizeChange(node.id, Math.max(16, (node.metadata?.fontSize || READABLE_TEXT_FONT_SIZE) - 2))}
+                    onIncreaseFont={(node) => handleFontSizeChange(node.id, Math.min(32, (node.metadata?.fontSize || READABLE_TEXT_FONT_SIZE) + 2))}
                     onToggleDialog={(node) => setDialogNodeId((current) => (current === node.id ? null : node.id))}
                     onGenerateImage={generateImageFromTextNode}
                     onUpload={(node) => handleUploadRequest(node.id)}

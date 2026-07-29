@@ -307,6 +307,17 @@ async function proxyOpenAI(request: NextRequest, context: RouteContext) {
             headers: copyRequestHeaders(request, target, body),
             body,
         });
+        const responseContentType = response.headers.get("content-type") || "";
+        if (!response.ok) {
+            const errorBody = await response.clone().text();
+            console.error("AI proxy upstream error", {
+                path: request.nextUrl.pathname,
+                model,
+                route: target.kind,
+                status: response.status,
+                body: errorBody.slice(0, 1000),
+            });
+        }
         console.log("AI proxy upstream response", {
             path: request.nextUrl.pathname,
             model,
@@ -316,7 +327,7 @@ async function proxyOpenAI(request: NextRequest, context: RouteContext) {
             visionModel: payloadInfo.hasImageInput ? visionModel() : undefined,
             status: response.status,
             durationMs: Date.now() - startedAt,
-            contentType: response.headers.get("content-type"),
+            contentType: responseContentType,
         });
 
         return new Response(response.body, {

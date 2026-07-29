@@ -308,6 +308,9 @@ function toFriendlyAiError(message?: string, status?: number, fallback = "请求
     const raw = (message || "").trim();
     const lower = raw.toLowerCase();
     const base = raw || readStatusError(status, fallback);
+    if (/not available in your region|region is not supported|地域不可用|区域不可用/i.test(raw)) {
+        return appendRaw("当前 OpenRouter 账户或部署区域不可调用该模型，请更换可用模型或供应商", raw);
+    }
     if (/无权访问|无权限|unauthorized|forbidden|permission|not allowed|令牌无权/.test(lower) || /无权访问|无权限|令牌无权/.test(raw)) {
         return appendRaw("模型或密钥权限不足，请检查该 API Key 是否支持当前模型", raw);
     }

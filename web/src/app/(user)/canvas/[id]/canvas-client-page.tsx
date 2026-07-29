@@ -1910,9 +1910,16 @@ function CanvasWorkspacePage() {
         }
         setReverseWorkflow((current) => (current ? { ...current, loading: true, error: undefined } : current));
         try {
+            const imageDataUrl = await imageToDataUrl({
+                dataUrl: reverseWorkflow.node.metadata.content,
+                storageKey: reverseWorkflow.node.metadata.storageKey,
+            });
+            if (!imageDataUrl || !imageDataUrl.startsWith("data:image/")) {
+                throw new Error("参考图无法转换为可发送的图片数据，请重新上传图片");
+            }
             const analysis = await requestImageQuestion(
                 requestConfig,
-                buildReverseVisionMessages(buildReversePromptAnalysisOnlyRequest(buildImagePromptReversePreset(reverseWorkflow.mode)), reverseWorkflow.node.metadata.content),
+                buildReverseVisionMessages(buildReversePromptAnalysisOnlyRequest(buildImagePromptReversePreset(reverseWorkflow.mode)), imageDataUrl),
                 () => {},
                 { temperature: 0.25, topP: 0.85, maxTokens: 3600 },
             );
@@ -1960,6 +1967,13 @@ function CanvasWorkspacePage() {
         }
         setReverseWorkflow((current) => (current ? { ...current, loading: true, prompts: [], error: undefined } : current));
         try {
+            const imageDataUrl = await imageToDataUrl({
+                dataUrl: reverseWorkflow.node.metadata.content,
+                storageKey: reverseWorkflow.node.metadata.storageKey,
+            });
+            if (!imageDataUrl || !imageDataUrl.startsWith("data:image/")) {
+                throw new Error("参考图无法转换为可发送的图片数据，请重新上传图片");
+            }
             const generatedPrompts: string[] = [];
             for (const [index, plan] of reverseWorkflow.plans.entries()) {
                 const generated = await requestImageQuestion(

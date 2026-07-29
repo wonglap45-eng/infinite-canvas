@@ -246,6 +246,35 @@ function splitReversePromptOutput(content: string) {
 
 type ReversePromptSplitResult = NonNullable<ReturnType<typeof splitReversePromptOutput>>;
 
+function splitReverseRoutePlans(content: string) {
+    const text = sanitizeReversePromptOutput(content.trim());
+    const markerPattern = /【路线规划\s*([1-5])\s*(?:[｜|]\s*([^】]+))?】/g;
+    const matches = Array.from(text.matchAll(markerPattern));
+    if (!matches.length) return null;
+
+    const plans = matches
+        .map((match, index) => {
+            const start = (match.index || 0) + match[0].length;
+            const end = index + 1 < matches.length ? matches[index + 1].index || text.length : text.length;
+            return {
+                index: Number(match[1]) || index + 1,
+                title: (match[2] || `独立路线 ${index + 1}`).trim(),
+                content: text.slice(start, end).trim(),
+            };
+        })
+        .filter((item) => item.content);
+
+    return plans.length === 5 ? plans : null;
+}
+
+function cleanSingleReversePrompt(content: string) {
+    return sanitizeReversePromptOutput(content.trim())
+        .replace(/^【可连线提示词\s*[1-5]?\s*(?:[｜|][^】]+)?】\s*/i, "")
+        .replace(/^提示词正文[:：]?\s*/i, "")
+        .replace(/^提示词[:：]?\s*/i, "")
+        .trim();
+}
+
 function sanitizeReversePromptOutput(content: string) {
     return content
         .replace(/\b(?:image|img)[-_ ]?\d+\.(?:png|jpe?g|webp)\b/gi, "参考图片")
@@ -286,11 +315,11 @@ function buildReversePromptRoutePlansRequest(analysis: string, sourcePrompt: str
 
 ${modeRule}
 
-请从参考图真实存在的构图机制中发散出五条差异明显的路线。路线之间必须改变实际设计决策，例如主体与辅助区域的关系、阅读顺序、空间分配、前后层次、信息区位置、图形与产品的关系、视觉重心或光影组织；不能只是把“高级、简洁、科技感”等形容词换一遍，也不要套用预设风格清单。每条路线都要说明：画面核心、产品如何替换为用户新产品、哪些参考元素可迁移、哪些参考文字和品牌信息必须舍弃、文字应如何根据用户产品真实可见内容重新组织。不要写成最终生图提示词，不要虚构用户产品名称、规格、功效或包装文字。
+请从参考图真实存在的构图机制中发散出五条差异明显的路线。路线之间必须改变实际设计决策，例如主体与辅助区域的关系、阅读顺序、空间分配、前后层次、信息区位置、图形与产品的关系、视觉重心或光影组织；不能只是把“高级、简洁、科技感”等形容词换一遍，也不要套用预设风格清单。五条路线必须互相排斥：如果两条路线的主体位置、阅读顺序、辅助元素关系、留白区和视觉重心大致相同，就视为重复，必须重写其中一条。每条路线都要说明：画面核心、产品如何替换为用户新产品、哪些参考元素可迁移、哪些参考文字和品牌信息必须舍弃、文字应如何根据用户产品真实可见内容重新组织。不要写成最终生图提示词，不要虚构用户产品名称、规格、功效或包装文字。
 
 只输出五条路线规划，使用以下格式，不要输出开场白、总结或额外方向：
 【路线规划1｜自拟标题】
-路线说明（约 120-220 字）
+路线说明（约 180-320 字）
 
 一直到【路线规划5｜自拟标题】。
 
@@ -298,38 +327,33 @@ ${modeRule}
 ${compactAnalysis}`;
 }
 
-function buildReversePromptFinalRequest(analysis: string, routePlans: string, sourcePrompt: string) {
-    const compactAnalysis = analysis.length > 3800 ? analysis.slice(0, 3800) : analysis;
-    const compactRoutes = routePlans.length > 6200 ? routePlans.slice(0, 6200) : routePlans;
+function buildReversePromptSingleFinalRequest(analysis: string, routePlan: string, previousPrompts: string[], sourcePrompt: string, index: number) {
+    const compactAnalysis = analysis.length > 3200 ? analysis.slice(0, 3200) : analysis;
+    const compactRoute = routePlan.length > 1800 ? routePlan.slice(0, 1800) : routePlan;
+    const compactPrevious = previousPrompts.length ? previousPrompts.map((prompt, previousIndex) => `已完成方案 ${previousIndex + 1}：${prompt.slice(0, 1400)}`).join("\n\n") : "目前没有已完成方案，这是第一条。";
     const modeRule = sourcePrompt.includes("本次反推用途：主图")
-        ? "这是主图任务：每条都使用白色或接近纯白背景，以用户上传的新产品为唯一产品主体，不添加人物、生活场景或参考产品。"
+        ? "这是主图任务：背景使用白色或接近纯白，但不要因此把所有方案都写成同一种居中白底陈列；以用户上传的新产品为唯一产品主体，不添加人物、生活场景或参考产品。"
         : "这是副图任务：根据参考图中真实可见的场景、氛围、信息表达和构图机制生成不同画面，不把参考产品本身带入新图。";
 
-    return `请再次查看本次请求中附带的原参考图片，并结合下面的视觉拆解和五条路线规划，输出五条可以直接交给图片生成模型执行的中文提示词。原参考图片是事实依据，下面的文字只是辅助，不能只根据文字摘要写模板。${modeRule}
+    return `请再次查看本次请求中附带的原参考图片，只为第 ${index} 条路线写一条可以直接交给图片生成模型执行的中文提示词。原参考图片是事实依据，下面的文字只是辅助，不能只根据文字摘要写模板。${modeRule}
 
-最终目标是：员工把每一条提示词连接到自己的产品图后，得到五张明显不同、但都能看出参考图构图逻辑的图片。五条提示词必须是五个独立设计稿的执行单，实际改变主体位置、空间关系、阅读顺序、信息层级、前后景关系、图形/材质与产品的结合方式或光影组织；不能只改变几个形容词，不能把一条模板复制五遍。
+本条必须严格执行“本路线规划”，不要退回通用产品白底模板。路线规划是从参考图实际观察得出的独立设计决策；如果本条与下面已完成方案在主体位置、阅读顺序、辅助元素关系、留白区、前后层次或视觉重心上相似，必须主动改成不同的画面结构。不要为了制造差异加入参考图不存在的元素，也不要只替换形容词。
 
 请严格遵守：
 1. 以用户上传的新产品图为唯一产品主体，保留其真实外观、品牌、包装结构、颜色、标签位置、比例和图片中确实可读的文字；不得把参考产品品牌、产品名、文案、规格、功效或图形文字复制到新图。
 2. 参考图中的文字只用于分析排版和信息组织，不作为新图文案。不得凭空编造用户产品没有的文字；文字处理要明确写出用户产品现有文字如何分层、对齐和呈现。
 3. 只能迁移原参考图实际存在并且适合迁移的构图、材质、图形、空间和商业表达；没有证据的元素不要补充。
-4. 不要输出分析报告、路线名称说明、模型或 API 信息，不要提及文件名。
-5. 每条正文 260-520 个中文字，第一句必须以“生成一张...”开头。
-
-输出格式只能是：
-【可连线提示词1｜自拟标题】
-生成一张...
-
-【可连线提示词2｜自拟标题】
-生成一张...
-
-一直到【可连线提示词5｜自拟标题】。除此之外不要输出任何内容。
+4. 不要输出分析报告、路线名称说明、模型、API、文件名或任何提示词标记。
+5. 正文 280-560 个中文字，第一句必须以“生成一张...”开头，只输出这一条提示词正文。
 
 第一步视觉拆解：
 ${compactAnalysis}
 
-五条路线规划：
-${compactRoutes}`;
+本条路线规划：
+${compactRoute}
+
+已完成方案（仅用于排除重复，不要复制）：
+${compactPrevious}`;
 }
 
 function createCanvasNode(type: CanvasNodeType, position: Position, metadata?: CanvasNodeMetadata): CanvasNodeData {
@@ -2679,15 +2703,25 @@ function CanvasWorkspacePage() {
                                       { signal: controller.signal, temperature: 0.75, topP: 0.95, maxTokens: 2600 },
                                   );
                                   if (controller.signal.aborted) return [{ nodeId: targetNodeId, content: analysisContent }];
-                                  const promptOutput = await requestImageQuestion(
-                                      generationConfig,
-                                      buildNodeResponseMessages({
-                                          ...generationContext,
-                                          prompt: buildReversePromptFinalRequest(analysisContent, routePlans, effectivePrompt),
-                                      }),
-                                      () => {},
-                                      { signal: controller.signal, temperature: 1.0, topP: 0.98, maxTokens: 6200 },
-                                  );
+                                  const routePlanItems = splitReverseRoutePlans(routePlans);
+                                  if (!routePlanItems) throw new Error("视觉模型没有返回五条独立路线，请重试");
+                                  const generatedPrompts: string[] = [];
+                                  for (const [planIndex, routePlan] of routePlanItems.entries()) {
+                                      if (controller.signal.aborted) return [{ nodeId: targetNodeId, content: analysisContent }];
+                                      const generated = await requestImageQuestion(
+                                          generationConfig,
+                                          buildNodeResponseMessages({
+                                              ...generationContext,
+                                              prompt: buildReversePromptSingleFinalRequest(analysisContent, routePlan.content, generatedPrompts, effectivePrompt, planIndex + 1),
+                                          }),
+                                          () => {},
+                                          { signal: controller.signal, temperature: 1.05, topP: 0.98, maxTokens: 1800 },
+                                      );
+                                      const cleaned = cleanSingleReversePrompt(generated);
+                                      if (!cleaned || cleaned === "没有返回内容") throw new Error(`第 ${planIndex + 1} 条独立提示词为空，请重试`);
+                                      generatedPrompts.push(cleaned);
+                                  }
+                                  const promptOutput = routePlanItems.map((routePlan, index) => `【可连线提示词${index + 1}｜${routePlan.title}】\n${generatedPrompts[index]}`).join("\n\n");
                                   streamed = `${analysisContent}\n\n${promptOutput}`;
                                   return [{ nodeId: targetNodeId, content: streamed }];
                               } finally {

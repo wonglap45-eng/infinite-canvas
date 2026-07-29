@@ -83,6 +83,18 @@ function visionModel() {
     return envValue("OPENAI_VISION_MODEL") || envModels("OPENAI_VISION_MODELS")[0] || "";
 }
 
+function upstreamModel(kind: UpstreamKind, requestedModel: string) {
+    if (kind === "text") return envValue("OPENAI_TEXT_UPSTREAM_MODEL") || requestedModel;
+    if (kind === "vision") return envValue("OPENAI_VISION_UPSTREAM_MODEL") || requestedModel;
+    return requestedModel;
+}
+
+function reasoningEffort(kind: UpstreamKind) {
+    if (kind === "text") return envValue("OPENAI_TEXT_REASONING_EFFORT");
+    if (kind === "vision") return envValue("OPENAI_VISION_REASONING_EFFORT");
+    return "";
+}
+
 function resolveUpstreamTarget(path: string[], model: string, hasImageInput = false): UpstreamTarget {
     if (hasImageInput && visionModel()) return kindTarget("vision");
     const modelRoutes: Array<{ kind: UpstreamKind; env: string }> = [
@@ -237,7 +249,7 @@ async function proxyOpenAI(request: NextRequest, context: RouteContext) {
                 { status: 400 },
             );
         }
-        const model = targetModel;
+        const model = upstreamModel(target.kind, targetModel);
         if (!target.apiKey) {
             return NextResponse.json(
                 {
@@ -252,7 +264,9 @@ async function proxyOpenAI(request: NextRequest, context: RouteContext) {
 
         const upstreamUrl = new URL(`${upstreamBaseUrl(target)}${endpointOverride(path, target)}`);
         upstreamUrl.search = request.nextUrl.search;
-        if (payloadInfo.hasImageInput && payloadInfo.jsonBody && model) payloadInfo.jsonBody.model = model;
+        if (payloadInfo.jsonBody && model) payloadInfo.jsonBody.model = model;
+        const effort = reasoningEffort(target.kind);
+        if (payloadInfo.jsonBody && effort && (target.kind === "text" || target.kind === "vision")) payloadInfo.jsonBody.reasoning_effort = effort;
         const body = request.method === "GET" || request.method === "HEAD" ? undefined : payloadInfo.jsonBody ? new TextEncoder().encode(JSON.stringify(payloadInfo.jsonBody)) : new Uint8Array(await request.arrayBuffer());
         if (isAsyncImageRequest(request, path)) {
             cleanupJobs();

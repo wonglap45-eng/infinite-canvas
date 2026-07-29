@@ -276,46 +276,60 @@ ${modeRule}
 输出必须是中文，内容越像给设计团队的拆解说明越好。`;
 }
 
-function buildReversePromptPlansRequest(analysis: string, sourcePrompt: string) {
+function buildReversePromptRoutePlansRequest(analysis: string, sourcePrompt: string) {
     const compactAnalysis = analysis.length > 5200 ? `${analysis.slice(0, 5200)}\n\n（以上为系统截取的核心拆解内容；原参考图会同时提供给你，请以图片证据为准。）` : analysis;
     const modeRule = sourcePrompt.includes("本次反推用途：主图")
-        ? `本次用途是主图。五个提示词都必须使用纯白或接近纯白背景，并以用户新产品作为唯一产品主体。不要添加人物、生活场景或参考图品牌。白底、产品真实、包装清晰只是共同底线，不能占据每条提示词的主要篇幅，也不能被当成五种差异。`
-        : `本次用途是副图。五个提示词允许迁移参考图的氛围、信息表达、背景关系、构图节奏和商业视觉语言，但必须各自形成明显不同的画面。`;
+        ? "本次用途是主图：五条路线都必须适合白色或接近纯白背景，但白底只是共同底线，不是路线差异。"
+        : "本次用途是副图：可以迁移参考图中真实存在的环境、氛围、信息表达和视觉动线，但不能凭空加入图片没有的内容。";
 
-    return `下面附有视觉模型根据原参考图片完成的第一步拆解分析。请把这份分析当作图片事实依据，不要凭空补充原图没有的元素，生成 5 个可直接连线使用的中文 AI 生图提示词。
+    return `你正在为后续的视觉模型制定五份互相独立的画面路线规划。下面有第一步视觉拆解分析；原参考图不会在本次请求中提供，所以只能依据分析中明确记录的图片事实，不得编造。
 
 ${modeRule}
 
-你的目标不是复述分析，也不是输出“迁移某某结构”的说明。你的目标是写出 5 条真正可以交给图片模型执行的完整生图提示词，让员工把每条提示词连接到自己的新产品图后，得到 5 张一眼可区分的主图/副图。每条提示词都必须像设计师已经做完一张独立设计稿后写下的执行单。
+请从参考图真实存在的构图机制中发散出五条差异明显的路线。路线之间必须改变实际设计决策，例如主体与辅助区域的关系、阅读顺序、空间分配、前后层次、信息区位置、图形与产品的关系、视觉重心或光影组织；不能只是把“高级、简洁、科技感”等形容词换一遍，也不要套用预设风格清单。每条路线都要说明：画面核心、产品如何替换为用户新产品、哪些参考元素可迁移、哪些参考文字和品牌信息必须舍弃、文字应如何根据用户产品真实可见内容重新组织。不要写成最终生图提示词，不要虚构用户产品名称、规格、功效或包装文字。
 
-请先在心里完成判断，但不要把这段判断写成五个提示词：
-- 参考图里实际有什么元素，哪些是原图产品自身内容；
-- 哪些构成关系可以迁移到用户产品，哪些必须舍弃；
-- 如何让五条提示词分别选择参考图中不同的视觉机制，而不是共同模板换形容词。
+只输出五条路线规划，使用以下格式，不要输出开场白、总结或额外方向：
+【路线规划1｜自拟标题】
+路线说明（约 120-220 字）
 
-最终只输出 5 个完整提示词节点，不要输出分析摘要，不要在提示词里提及 image_0.png、图片文件名、模型、API 或本次对话。
+一直到【路线规划5｜自拟标题】。
 
-硬性要求：
-1. 每个节点必须是完整生图提示词，不是分析说明。正文第一句必须以“生成一张...”开头，并直接描述最终画面。
-2. 每条都必须以用户上传的新产品图为唯一产品主体，保留新产品真实外观、品牌、包装结构、颜色、标签位置和比例；不能把参考产品带进新图。
-3. 只迁移参考图可见的构图关系、信息组织、局部图形、材质、纹理或商业表达，不复制参考图品牌、产品名、包装文字、具体卖点或不存在的信息。
-4. 五条必须是五个独立的画面设计：产品位置、阅读顺序、空间分配、前后层次、信息区组织和视觉重心至少有多项不同。差异必须由原图观察推导，不能用预设方向名称或随机形容词代替。
-5. 每条都要具体写清最终画面中的产品位置、层次关系、可见信息区域、构图重心、视觉动线和图像质感；不能只写“高级、简洁、科技感”。
-6. 文字处理必须针对用户自己的产品：保留用户产品图上真实可见且需要保留的文字，重新组织文字位置和层级；绝不照搬参考图文字，也不凭空编造用户产品没有的规格、功效或卖点。主图不得添加大段外部营销文案。
-7. 不要在每条提示词重复同一段“固定保留/白底/唯一主体”套话，用自然语言融入必要约束，把篇幅用在五个不同的画面设计上。
-8. 每条 260-520 个中文字，内容要能直接执行，不要写成泛泛的分析报告。
-
-输出格式必须严格如下：
-【可连线提示词1｜标题】
-生成一张...
-直接写完整提示词正文，不要添加固定字段。
-
-【可连线提示词2｜标题】
-...
-一直到【可连线提示词5｜标题】。
-
-参考图拆解分析：
+参考图视觉拆解分析：
 ${compactAnalysis}`;
+}
+
+function buildReversePromptFinalRequest(analysis: string, routePlans: string, sourcePrompt: string) {
+    const compactAnalysis = analysis.length > 3800 ? analysis.slice(0, 3800) : analysis;
+    const compactRoutes = routePlans.length > 6200 ? routePlans.slice(0, 6200) : routePlans;
+    const modeRule = sourcePrompt.includes("本次反推用途：主图")
+        ? "这是主图任务：每条都使用白色或接近纯白背景，以用户上传的新产品为唯一产品主体，不添加人物、生活场景或参考产品。"
+        : "这是副图任务：根据参考图中真实可见的场景、氛围、信息表达和构图机制生成不同画面，不把参考产品本身带入新图。";
+
+    return `请再次查看本次请求中附带的原参考图片，并结合下面的视觉拆解和五条路线规划，输出五条可以直接交给图片生成模型执行的中文提示词。原参考图片是事实依据，下面的文字只是辅助，不能只根据文字摘要写模板。${modeRule}
+
+最终目标是：员工把每一条提示词连接到自己的产品图后，得到五张明显不同、但都能看出参考图构图逻辑的图片。五条提示词必须是五个独立设计稿的执行单，实际改变主体位置、空间关系、阅读顺序、信息层级、前后景关系、图形/材质与产品的结合方式或光影组织；不能只改变几个形容词，不能把一条模板复制五遍。
+
+请严格遵守：
+1. 以用户上传的新产品图为唯一产品主体，保留其真实外观、品牌、包装结构、颜色、标签位置、比例和图片中确实可读的文字；不得把参考产品品牌、产品名、文案、规格、功效或图形文字复制到新图。
+2. 参考图中的文字只用于分析排版和信息组织，不作为新图文案。不得凭空编造用户产品没有的文字；文字处理要明确写出用户产品现有文字如何分层、对齐和呈现。
+3. 只能迁移原参考图实际存在并且适合迁移的构图、材质、图形、空间和商业表达；没有证据的元素不要补充。
+4. 不要输出分析报告、路线名称说明、模型或 API 信息，不要提及文件名。
+5. 每条正文 260-520 个中文字，第一句必须以“生成一张...”开头。
+
+输出格式只能是：
+【可连线提示词1｜自拟标题】
+生成一张...
+
+【可连线提示词2｜自拟标题】
+生成一张...
+
+一直到【可连线提示词5｜自拟标题】。除此之外不要输出任何内容。
+
+第一步视觉拆解：
+${compactAnalysis}
+
+五条路线规划：
+${compactRoutes}`;
 }
 
 function createCanvasNode(type: CanvasNodeType, position: Position, metadata?: CanvasNodeMetadata): CanvasNodeData {
@@ -2658,11 +2672,21 @@ function CanvasWorkspacePage() {
                                   );
                                   if (controller.signal.aborted) return [{ nodeId: targetNodeId, content: analysis || analysisStreamed }];
                                   const analysisContent = analysis || analysisStreamed;
-                                  let promptOutput = await requestImageQuestion(
+                                  const routePlans = await requestImageQuestion(
                                       generationConfig,
-                                      [{ role: "user", content: buildReversePromptPlansRequest(analysisContent, effectivePrompt) }],
+                                      [{ role: "user", content: buildReversePromptRoutePlansRequest(analysisContent, effectivePrompt) }],
                                       () => {},
-                                      { signal: controller.signal, temperature: 1.12, topP: 0.99, maxTokens: 5200 },
+                                      { signal: controller.signal, temperature: 0.75, topP: 0.95, maxTokens: 2600 },
+                                  );
+                                  if (controller.signal.aborted) return [{ nodeId: targetNodeId, content: analysisContent }];
+                                  const promptOutput = await requestImageQuestion(
+                                      generationConfig,
+                                      buildNodeResponseMessages({
+                                          ...generationContext,
+                                          prompt: buildReversePromptFinalRequest(analysisContent, routePlans, effectivePrompt),
+                                      }),
+                                      () => {},
+                                      { signal: controller.signal, temperature: 1.0, topP: 0.98, maxTokens: 6200 },
                                   );
                                   streamed = `${analysisContent}\n\n${promptOutput}`;
                                   return [{ nodeId: targetNodeId, content: streamed }];

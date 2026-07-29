@@ -6,7 +6,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Bot, Home, ImageIcon, Images, List, Menu, Music2, Plus, Redo2, Settings2, Trash2, Undo2, Upload, Video } from "lucide-react";
 import { saveAs } from "file-saver";
 
-import { requestEdit, requestGeneration, requestImageQuestion } from "@/services/api/image";
+import { requestEdit, requestGeneration, requestImageQuestion, type AiTextMessage } from "@/services/api/image";
 import { requestAudioGeneration, storeGeneratedAudio } from "@/services/api/audio";
 import { requestVideoGeneration, storeGeneratedVideo } from "@/services/api/video";
 import { defaultConfig, type AiConfig, useConfigStore, useEffectiveConfig } from "@/stores/use-config-store";
@@ -94,6 +94,23 @@ type CanvasGenerationRequest = {
     originNodeId: string;
     runningNodeId: string;
     controller: AbortController;
+};
+
+type ReverseWorkflowPlan = {
+    index: number;
+    title: string;
+    content: string;
+};
+
+type ReverseWorkflowState = {
+    node: CanvasNodeData;
+    mode: ReversePromptMode;
+    stage: "analysis" | "plans" | "prompts";
+    analysis: string;
+    plans: ReverseWorkflowPlan[];
+    prompts: string[];
+    loading: boolean;
+    error?: string;
 };
 
 const VIDEO_NODE_MAX_WIDTH = 420;
@@ -248,7 +265,7 @@ type ReversePromptSplitResult = NonNullable<ReturnType<typeof splitReversePrompt
 
 function splitReverseRoutePlans(content: string) {
     const text = sanitizeReversePromptOutput(content.trim());
-    const markerPattern = /【路线规划\s*([1-5])\s*(?:[｜|]\s*([^】]+))?】/g;
+    const markerPattern = /【(?:路线规划|设计方案)\s*([1-5])\s*(?:[｜|]\s*([^】]+))?】/g;
     const matches = Array.from(text.matchAll(markerPattern));
     if (!matches.length) return null;
 
@@ -300,28 +317,54 @@ ${modeRule}
 5. 把“参考产品自身内容”和“可迁移的画面构成”分开：品牌、产品名、包装文字、卖点、规格属于前者；构图关系、信息组织和视觉元素属于后者。
 6. 列出图片中确实存在的可迁移元素，并说明它们在画面中的作用。不要为了凑数量添加图片里没有的元素。
 7. 明确不能变的内容：后续上传的新产品真实外观、品牌、包装结构、标签位置、颜色和比例；参考图的品牌、产品名、具体文案和卖点不能复制。
-8. 明确可以变化的内容：只根据当前图片判断哪些元素可以重新组织成不同画面，并说明每种变化会怎样改变最终画面。不要列出预设风格、固定方向或示例类别。
+8. 明确可以变化的内容：根据当前图片判断哪些视觉机制可以迁移或重新设计。允许提出参考图中没有直接出现、但与参考图商业目的和视觉语法相容的新图形、材质、信息组织或制作方式；这些属于创意变化，不得复制竞品事实，也不能凭空改变用户产品身份。
 
 输出必须是中文，内容越像给设计团队的拆解说明越好。`;
+}
+
+function buildReverseVisionMessages(prompt: string, imageDataUrl: string): AiTextMessage[] {
+    return [
+        {
+            role: "user",
+            content: [
+                { type: "text", text: prompt },
+                { type: "image_url", image_url: { url: imageDataUrl } },
+            ],
+        },
+    ];
 }
 
 function buildReversePromptRoutePlansRequest(analysis: string, sourcePrompt: string) {
     const compactAnalysis = analysis.length > 5200 ? `${analysis.slice(0, 5200)}\n\n（以上为系统截取的核心拆解内容；原参考图会同时提供给你，请以图片证据为准。）` : analysis;
     const modeRule = sourcePrompt.includes("本次反推用途：主图")
         ? "本次用途是主图：五条路线都必须适合白色或接近纯白背景，但白底只是共同底线，不是路线差异。"
-        : "本次用途是副图：可以迁移参考图中真实存在的环境、氛围、信息表达和视觉动线，但不能凭空加入图片没有的内容。";
+        : "本次用途是副图：可以迁移参考图中真实存在的环境、氛围、信息表达和视觉动线，也可以在同一商业视觉语法下提出合理的新表达。";
 
-    return `你正在为后续的视觉模型制定五份互相独立的画面路线规划。下面有第一步视觉拆解分析；原参考图不会在本次请求中提供，所以只能依据分析中明确记录的图片事实，不得编造。
+    return `你是一名商业视觉创意总监。你正在为后续的视觉模型制定五份互相独立的设计方案。下面有第一步视觉拆解分析；原参考图不会在本次请求中提供，所以只能依据分析中明确记录的图片事实和设计推理，不得复制参考产品事实。
 
 ${modeRule}
 
-请从参考图真实存在的构图机制中发散出五条差异明显的路线。路线之间必须改变实际设计决策，例如主体与辅助区域的关系、阅读顺序、空间分配、前后层次、信息区位置、图形与产品的关系、视觉重心或光影组织；不能只是把“高级、简洁、科技感”等形容词换一遍，也不要套用预设风格清单。五条路线必须互相排斥：如果两条路线的主体位置、阅读顺序、辅助元素关系、留白区和视觉重心大致相同，就视为重复，必须重写其中一条。每条路线都要说明：画面核心、产品如何替换为用户新产品、哪些参考元素可迁移、哪些参考文字和品牌信息必须舍弃、文字应如何根据用户产品真实可见内容重新组织。不要写成最终生图提示词，不要虚构用户产品名称、规格、功效或包装文字。
+先从分析中提取参考图的视觉语法，再为五个方案分别选择不同的“核心变化机制”。核心变化机制必须是实际设计动作或商业表达方式，例如信息图结构、材质/工艺表现、图形语义、卖点承载方式、产品与辅助元素的关系、使用场景的表达、品牌信息的组织方式等；具体选择必须由当前图片推导，不能套用固定五类方向。
 
-只输出五条路线规划，使用以下格式，不要输出开场白、总结或额外方向：
-【路线规划1｜自拟标题】
-路线说明（约 180-320 字）
+五个方案必须满足：
+1. 每个方案只设一个主导变化机制，并说明这个机制解决什么视觉或商业问题。
+2. 五个主导变化机制必须互不相同；“产品放左/放右”“文字放上/放下”“换一个背景颜色”不能单独算作不同方案。
+3. 允许提出参考图中没有直接出现、但与参考图的商业目的、材质逻辑和视觉语法相容的新表达；不能复制竞品品牌、包装、原文案或具体事实。
+4. 每条方案都要说明：方案目的、主导变化机制、参考证据、产品如何替换为用户新产品、文字/信息如何处理、固定保留项、明确不做什么、与其他方案的区别。
+5. 不要写成最终生图提示词，不要虚构用户产品名称、规格、功效或包装文字。
 
-一直到【路线规划5｜自拟标题】。
+只输出五条设计方案，使用以下格式，不要输出开场白、总结或额外方向：
+【设计方案1｜自拟标题】
+方案目的：...
+核心变化机制：...
+参考证据：...
+产品迁移：...
+文字与信息处理：...
+固定保留项：...
+不做什么：...
+与其他方案的区别：...
+
+一直到【设计方案5｜自拟标题】。
 
 参考图视觉拆解分析：
 ${compactAnalysis}`;
@@ -335,14 +378,14 @@ function buildReversePromptSingleFinalRequest(analysis: string, routePlan: strin
         ? "这是主图任务：背景使用白色或接近纯白，但不要因此把所有方案都写成同一种居中白底陈列；以用户上传的新产品为唯一产品主体，不添加人物、生活场景或参考产品。"
         : "这是副图任务：根据参考图中真实可见的场景、氛围、信息表达和构图机制生成不同画面，不把参考产品本身带入新图。";
 
-    return `请再次查看本次请求中附带的原参考图片，只为第 ${index} 条路线写一条可以直接交给图片生成模型执行的中文提示词。原参考图片是事实依据，下面的文字只是辅助，不能只根据文字摘要写模板。${modeRule}
+    return `请再次查看本次请求中附带的原参考图片，只为第 ${index} 条设计方案写一条可以直接交给图片生成模型执行的中文提示词。原参考图片是事实依据，下面的文字只是辅助，不能只根据文字摘要写模板。${modeRule}
 
-本条必须严格执行“本路线规划”，不要退回通用产品白底模板。路线规划是从参考图实际观察得出的独立设计决策；如果本条与下面已完成方案在主体位置、阅读顺序、辅助元素关系、留白区、前后层次或视觉重心上相似，必须主动改成不同的画面结构。不要为了制造差异加入参考图不存在的元素，也不要只替换形容词。
+本条必须严格执行“本设计方案”的核心变化机制，不要退回通用产品白底模板。方案是从参考图视觉语法和设计推理得出的独立决策；如果本条与下面已完成方案只在主体位置、阅读顺序、留白区或视觉重心上不同，必须回到核心变化机制重新写。允许使用方案中明确提出的合理新表达，但不能复制参考产品事实，也不能只替换形容词。
 
 请严格遵守：
 1. 以用户上传的新产品图为唯一产品主体，保留其真实外观、品牌、包装结构、颜色、标签位置、比例和图片中确实可读的文字；不得把参考产品品牌、产品名、文案、规格、功效或图形文字复制到新图。
 2. 参考图中的文字只用于分析排版和信息组织，不作为新图文案。不得凭空编造用户产品没有的文字；文字处理要明确写出用户产品现有文字如何分层、对齐和呈现。
-3. 只能迁移原参考图实际存在并且适合迁移的构图、材质、图形、空间和商业表达；没有证据的元素不要补充。
+3. 迁移原参考图实际存在的视觉语法；方案中明确提出且与其商业目的相容的新图形、材质、信息组织或制作方式可以使用，但必须服务于本条核心变化机制。
 4. 不要输出分析报告、路线名称说明、模型、API、文件名或任何提示词标记。
 5. 正文 280-560 个中文字，第一句必须以“生成一张...”开头，只输出这一条提示词正文。
 
@@ -554,6 +597,7 @@ function CanvasWorkspacePage() {
     const [promptGeneratorOpen, setPromptGeneratorOpen] = useState(false);
     const [promptGeneratorInput, setPromptGeneratorInput] = useState("");
     const [promptGenerating, setPromptGenerating] = useState(false);
+    const [reverseWorkflow, setReverseWorkflow] = useState<ReverseWorkflowState | null>(null);
     const [projectLoaded, setProjectLoaded] = useState(false);
     const [toolbarNodeId, setToolbarNodeId] = useState<string | null>(null);
     const [nodeImageSettingsOpen, setNodeImageSettingsOpen] = useState(false);
@@ -1852,52 +1896,114 @@ function CanvasWorkspacePage() {
         [addAsset, currentProject?.title, message, projectId],
     );
 
-    const createImageReversePromptNodes = useCallback(
-        (node: CanvasNodeData, mode: ReversePromptMode) => {
-            if (node.type !== CanvasNodeType.Image || !node.metadata?.content) {
-                message.warning("图片节点为空，无法反推提示词");
-                return;
+    const openReverseWorkflow = useCallback((node: CanvasNodeData, mode: ReversePromptMode) => {
+        setReverseWorkflow({ node, mode, stage: "analysis", analysis: "", plans: [], prompts: [], loading: false });
+        setContextMenu(null);
+    }, []);
+
+    const runReverseWorkflowAnalysis = useCallback(async () => {
+        if (!reverseWorkflow?.node.metadata?.content || reverseWorkflow.loading) return;
+        const requestConfig = { ...effectiveConfig, model: effectiveConfig.textModel || effectiveConfig.model || defaultConfig.textModel };
+        if (!isAiConfigReady(requestConfig, requestConfig.model)) {
+            message.warning("请先完成文本模型配置");
+            return;
+        }
+        setReverseWorkflow((current) => (current ? { ...current, loading: true, error: undefined } : current));
+        try {
+            const analysis = await requestImageQuestion(
+                requestConfig,
+                buildReverseVisionMessages(buildReversePromptAnalysisOnlyRequest(buildImagePromptReversePreset(reverseWorkflow.mode)), reverseWorkflow.node.metadata.content),
+                () => {},
+                { temperature: 0.25, topP: 0.85, maxTokens: 3600 },
+            );
+            setReverseWorkflow((current) => (current ? { ...current, stage: "plans", analysis, loading: false } : current));
+        } catch (error) {
+            const details = error instanceof Error ? error.message : "参考图分析失败";
+            setReverseWorkflow((current) => (current ? { ...current, loading: false, error: details } : current));
+            message.error(details);
+        }
+    }, [effectiveConfig, isAiConfigReady, message, reverseWorkflow]);
+
+    const runReverseWorkflowPlans = useCallback(async () => {
+        if (!reverseWorkflow?.analysis || reverseWorkflow.loading) return;
+        const requestConfig = { ...effectiveConfig, model: effectiveConfig.textModel || effectiveConfig.model || defaultConfig.textModel };
+        if (!isAiConfigReady(requestConfig, requestConfig.model)) {
+            message.warning("请先完成文本模型配置");
+            return;
+        }
+        setReverseWorkflow((current) => (current ? { ...current, loading: true, error: undefined } : current));
+        try {
+            const response = await requestImageQuestion(
+                requestConfig,
+                [{ role: "user", content: buildReversePromptRoutePlansRequest(reverseWorkflow.analysis, buildImagePromptReversePreset(reverseWorkflow.mode)) }],
+                () => {},
+                { temperature: 0.85, topP: 0.98, maxTokens: 3600 },
+            );
+            const plans = splitReverseRoutePlans(response);
+            if (!plans || plans.length !== 5) throw new Error("模型没有返回五套完整设计方案，请重新生成方案");
+            setReverseWorkflow((current) => (current ? { ...current, stage: "plans", plans, loading: false } : current));
+        } catch (error) {
+            const details = error instanceof Error ? error.message : "设计方案生成失败";
+            setReverseWorkflow((current) => (current ? { ...current, loading: false, error: details } : current));
+            message.error(details);
+        }
+    }, [effectiveConfig, isAiConfigReady, message, reverseWorkflow]);
+
+    const runReverseWorkflowPrompts = useCallback(async () => {
+        if (!reverseWorkflow?.analysis || reverseWorkflow.plans.length !== 5 || reverseWorkflow.loading) return;
+        const imageDataUrl = reverseWorkflow.node.metadata?.content;
+        if (!imageDataUrl) return;
+        const requestConfig = { ...effectiveConfig, model: effectiveConfig.textModel || effectiveConfig.model || defaultConfig.textModel };
+        if (!isAiConfigReady(requestConfig, requestConfig.model)) {
+            message.warning("请先完成文本模型配置");
+            return;
+        }
+        setReverseWorkflow((current) => (current ? { ...current, loading: true, prompts: [], error: undefined } : current));
+        try {
+            const generatedPrompts: string[] = [];
+            for (const [index, plan] of reverseWorkflow.plans.entries()) {
+                const generated = await requestImageQuestion(
+                    requestConfig,
+                    buildReverseVisionMessages(buildReversePromptSingleFinalRequest(reverseWorkflow.analysis, plan.content, generatedPrompts, buildImagePromptReversePreset(reverseWorkflow.mode), index + 1), imageDataUrl),
+                    () => {},
+                    { temperature: 1.05, topP: 0.98, maxTokens: 2200 },
+                );
+                const cleaned = cleanSingleReversePrompt(generated);
+                if (!cleaned || cleaned === "没有返回内容") throw new Error(`第 ${index + 1} 条提示词为空，请重新生成`);
+                generatedPrompts.push(cleaned);
+                setReverseWorkflow((current) => (current ? { ...current, prompts: [...generatedPrompts] } : current));
             }
+            setReverseWorkflow((current) => (current ? { ...current, loading: false } : current));
+        } catch (error) {
+            const details = error instanceof Error ? error.message : "完整提示词生成失败";
+            setReverseWorkflow((current) => (current ? { ...current, loading: false, error: details } : current));
+            message.error(details);
+        }
+    }, [effectiveConfig, isAiConfigReady, message, reverseWorkflow]);
 
-            const reversePrompt = buildImagePromptReversePreset(mode);
-            const gap = 96;
-            const configSpec = NODE_DEFAULT_SIZE[CanvasNodeType.Config];
-            const centerY = node.position.y + node.height / 2;
-            const textNode = {
-                ...createSizedTextNode(
-                    { x: node.position.x + node.width + gap + LONG_PROMPT_NODE_SIZE.width / 2, y: centerY },
-                    LONG_PROMPT_NODE_SIZE,
-                    { content: reversePrompt, prompt: reversePrompt, status: NODE_STATUS_SUCCESS, fontSize: READABLE_TEXT_FONT_SIZE },
-                ),
-                title: mode === "main" ? "主图反推提示词" : "副图反推提示词",
+    const createReverseWorkflowPromptNodes = useCallback(() => {
+        if (!reverseWorkflow || reverseWorkflow.prompts.length !== 5) return;
+        const source = reverseWorkflow.node;
+        const gap = 120;
+        const promptNodes = reverseWorkflow.prompts.map((content, index) => {
+            const plan = reverseWorkflow.plans[index];
+            const center = {
+                x: source.position.x + source.width + gap + LONG_PROMPT_NODE_SIZE.width / 2,
+                y: source.position.y + source.height / 2 - ((reverseWorkflow.prompts.length - 1) * (LONG_PROMPT_NODE_SIZE.height + 36)) / 2 + index * (LONG_PROMPT_NODE_SIZE.height + 36),
             };
-            const configNode = {
-                ...createCanvasNode(
-                    CanvasNodeType.Config,
-                    { x: textNode.position.x + textNode.width + gap + configSpec.width / 2, y: centerY },
-                    {
-                        generationMode: "text",
-                        model: effectiveConfig.textModel || effectiveConfig.model || defaultConfig.textModel,
-                        count: 1,
-                        composerContent: `参考图片：@[node:${node.id}]\n任务说明：@[node:${textNode.id}]`,
-                    },
-                ),
-                title: "反推提示词配置",
+            return {
+                ...createSizedTextNode(center, LONG_PROMPT_NODE_SIZE, { content, prompt: content, status: NODE_STATUS_SUCCESS, fontSize: READABLE_TEXT_FONT_SIZE }),
+                title: `可连线提示词 ${index + 1}｜${plan?.title || "设计方案"}`.slice(0, 48),
             };
-
-            setNodes((prev) => [...prev, textNode, configNode]);
-            setConnections((prev) => [
-                ...prev,
-                { id: nanoid(), fromNodeId: node.id, toNodeId: configNode.id },
-                { id: nanoid(), fromNodeId: textNode.id, toNodeId: configNode.id },
-            ]);
-            setSelectedNodeIds(new Set([configNode.id]));
-            setSelectedConnectionId(null);
-            setDialogNodeId(configNode.id);
-            setContextMenu(null);
-        },
-        [effectiveConfig.model, effectiveConfig.textModel, message],
-    );
+        });
+        setNodes((prev) => [...prev, ...promptNodes]);
+        setConnections((prev) => [...prev, ...promptNodes.map((promptNode) => ({ id: nanoid(), fromNodeId: source.id, toNodeId: promptNode.id }))]);
+        setSelectedNodeIds(new Set(promptNodes.map((node) => node.id)));
+        setSelectedConnectionId(null);
+        setDialogNodeId(promptNodes[0]?.id || null);
+        setReverseWorkflow(null);
+        message.success("已创建 5 个独立提示词节点。请将自己的产品图连接到生图配置。");
+    }, [message, reverseWorkflow]);
 
     const chooseImageReversePromptMode = useCallback(
         (node: CanvasNodeData) => {
@@ -1916,11 +2022,11 @@ function CanvasWorkspacePage() {
                 okText: "主图",
                 cancelText: "副图",
                 maskClosable: false,
-                onOk: () => createImageReversePromptNodes(node, "main"),
-                onCancel: () => createImageReversePromptNodes(node, "secondary"),
+                onOk: () => openReverseWorkflow(node, "main"),
+                onCancel: () => openReverseWorkflow(node, "secondary"),
             });
         },
-        [createImageReversePromptNodes, message, modal],
+        [message, modal, openReverseWorkflow],
     );
 
     const createGeneratedPromptNode = useCallback(
@@ -2744,9 +2850,10 @@ function CanvasWorkspacePage() {
                 if (controller.signal.aborted) return;
                 const answerByNodeId = new Map(answers.map((item) => [item.nodeId, item.content]));
                 let reversePromptResult = isConfigNode && childIds.length === 1 && isReversePromptRequest(effectivePrompt) ? splitReversePromptOutput(answerByNodeId.get(childIds[0]) || streamed) : null;
-                if (reversePromptResult?.prompts.length === 5) {
-                    const promptCount = Math.min(5, reversePromptResult.prompts.length);
-                    const promptNodes = reversePromptResult.prompts.slice(0, 5).map((item, index) => {
+                const parsedReversePromptResult = reversePromptResult;
+                if (parsedReversePromptResult?.prompts.length === 5) {
+                    const promptCount = Math.min(5, parsedReversePromptResult.prompts.length);
+                    const promptNodes = parsedReversePromptResult.prompts.slice(0, 5).map((item, index) => {
                         const center = {
                             x: parentPosition.x + parentConfig.width + 96 + REVERSE_PROMPT_RESULT_NODE_SIZE.width + 96 + REVERSE_PROMPT_RESULT_NODE_SIZE.width / 2,
                             y: parentPosition.y + parentConfig.height / 2 - ((promptCount - 1) * (REVERSE_PROMPT_RESULT_NODE_SIZE.height + 40)) / 2 + index * (REVERSE_PROMPT_RESULT_NODE_SIZE.height + 40),
@@ -2759,7 +2866,7 @@ function CanvasWorkspacePage() {
                     setNodes((prev) => [
                         ...prev.map((node) =>
                             childIds.includes(node.id)
-                                ? { ...node, title: "反推分析", width: REVERSE_PROMPT_RESULT_NODE_SIZE.width, height: REVERSE_PROMPT_RESULT_NODE_SIZE.height, metadata: { ...node.metadata, content: reversePromptResult.analysis, status: NODE_STATUS_SUCCESS } }
+                                ? { ...node, title: "反推分析", width: REVERSE_PROMPT_RESULT_NODE_SIZE.width, height: REVERSE_PROMPT_RESULT_NODE_SIZE.height, metadata: { ...node.metadata, content: parsedReversePromptResult.analysis, status: NODE_STATUS_SUCCESS } }
                                 : node.id === nodeId && isConfigNode
                                   ? { ...node, metadata: { ...node.metadata, status: NODE_STATUS_SUCCESS } }
                                   : node,
@@ -3326,6 +3433,105 @@ function CanvasWorkspacePage() {
 
                 <AssetPickerModal open={assetPickerOpen} onInsert={handleAssetInsert} onClose={() => setAssetPickerOpen(false)} />
                 <GenerationMonitorModal open={monitorOpen} onClose={() => setMonitorOpen(false)} />
+                <Modal
+                    title="反推提示词工作流"
+                    open={Boolean(reverseWorkflow)}
+                    width={1120}
+                    centered
+                    destroyOnClose={false}
+                    onCancel={() => {
+                        if (reverseWorkflow?.loading) return;
+                        setReverseWorkflow(null);
+                    }}
+                    footer={null}
+                >
+                    {reverseWorkflow ? (
+                        <div className="flex max-h-[76vh] flex-col gap-4 overflow-hidden">
+                            <div className="flex flex-wrap items-center gap-2 text-sm">
+                                <span className="rounded-full bg-black px-3 py-1 text-white">1 分析参考图</span>
+                                <span className={reverseWorkflow.stage !== "analysis" ? "rounded-full bg-black px-3 py-1 text-white" : "rounded-full bg-neutral-100 px-3 py-1 text-neutral-500"}>2 生成五套设计方案</span>
+                                <span className={reverseWorkflow.prompts.length === 5 ? "rounded-full bg-black px-3 py-1 text-white" : "rounded-full bg-neutral-100 px-3 py-1 text-neutral-500"}>3 生成完整提示词</span>
+                                <span className="ml-auto text-neutral-500">{reverseWorkflow.mode === "main" ? "主图模式：白色背景共同底线" : "副图模式：根据参考图动态发散"}</span>
+                            </div>
+
+                            {reverseWorkflow.error ? <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{reverseWorkflow.error}</div> : null}
+
+                            <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+                                {reverseWorkflow.stage === "analysis" ? (
+                                    <div className="space-y-4">
+                                        <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4 text-sm leading-7 text-neutral-600">
+                                            这一阶段只读取参考图并拆解视觉结构，不生成图片，也不会创建五条提示词。分析完成后，你可以先查看结果，再决定是否继续生成方案。
+                                        </div>
+                                        {reverseWorkflow.analysis ? <Input.TextArea value={reverseWorkflow.analysis} readOnly autoSize={{ minRows: 16, maxRows: 24 }} /> : null}
+                                        <Button type="primary" loading={reverseWorkflow.loading} onClick={() => void runReverseWorkflowAnalysis()}>
+                                            {reverseWorkflow.analysis ? "重新分析参考图" : "分析参考图"}
+                                        </Button>
+                                    </div>
+                                ) : null}
+
+                                {reverseWorkflow.stage === "plans" ? (
+                                    <div className="space-y-4">
+                                        <div>
+                                            <div className="mb-2 text-base font-semibold">参考图拆解结果</div>
+                                            <Input.TextArea value={reverseWorkflow.analysis} readOnly autoSize={{ minRows: 10, maxRows: 18 }} />
+                                        </div>
+                                        <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4 text-sm leading-7 text-neutral-600">
+                                            下一步会先生成五套设计方案。每套方案必须有独立的核心变化机制，不能只改变产品左右位置、上下层级或背景颜色。
+                                        </div>
+                                        {reverseWorkflow.plans.length ? (
+                                            <div className="grid gap-3 md:grid-cols-2">
+                                                {reverseWorkflow.plans.map((plan) => (
+                                                    <div key={plan.index} className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
+                                                        <div className="mb-2 font-semibold">方案 {plan.index}：{plan.title}</div>
+                                                        <div className="whitespace-pre-wrap text-sm leading-6 text-neutral-600">{plan.content}</div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : null}
+                                        <div className="flex gap-2">
+                                            <Button loading={reverseWorkflow.loading} onClick={() => void runReverseWorkflowPlans()}>
+                                                {reverseWorkflow.plans.length ? "重新生成五套方案" : "生成五套设计方案"}
+                                            </Button>
+                                            {reverseWorkflow.plans.length === 5 ? <Button type="primary" onClick={() => { setReverseWorkflow((current) => (current ? { ...current, stage: "prompts" } : current)); void runReverseWorkflowPrompts(); }}>确认方案并生成提示词</Button> : null}
+                                        </div>
+                                    </div>
+                                ) : null}
+
+                                {reverseWorkflow.stage === "prompts" ? (
+                                    <div className="space-y-4">
+                                        <div className="grid gap-3 md:grid-cols-2">
+                                            {reverseWorkflow.plans.map((plan) => (
+                                                <div key={plan.index} className="rounded-xl border border-neutral-200 bg-neutral-50 p-3">
+                                                    <div className="mb-1 text-sm font-semibold">方案 {plan.index}：{plan.title}</div>
+                                                    <div className="whitespace-pre-wrap text-xs leading-5 text-neutral-600">{plan.content}</div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-3 text-sm text-neutral-600">
+                                            {reverseWorkflow.loading ? `正在独立生成第 ${Math.min(reverseWorkflow.prompts.length + 1, 5)} 条提示词……` : reverseWorkflow.prompts.length === 5 ? "五条提示词已经分别生成。确认后才会创建画布节点，不会调用图片生成接口。" : "确认上面的五套方案后，分别生成五条完整提示词。"}
+                                        </div>
+                                        {reverseWorkflow.prompts.length ? (
+                                            <div className="space-y-3">
+                                                {reverseWorkflow.prompts.map((prompt, index) => (
+                                                    <div key={index} className="rounded-xl border border-neutral-200 bg-white p-3">
+                                                        <div className="mb-2 font-semibold">提示词 {index + 1}</div>
+                                                        <Input.TextArea value={prompt} readOnly autoSize={{ minRows: 6, maxRows: 14 }} />
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : null}
+                                        <div className="flex gap-2">
+                                            <Button loading={reverseWorkflow.loading} onClick={() => void runReverseWorkflowPrompts()}>
+                                                {reverseWorkflow.prompts.length ? "重新生成五条提示词" : "生成五条完整提示词"}
+                                            </Button>
+                                            {reverseWorkflow.prompts.length === 5 ? <Button type="primary" onClick={createReverseWorkflowPromptNodes}>创建五个提示词节点</Button> : null}
+                                        </div>
+                                    </div>
+                                ) : null}
+                            </div>
+                        </div>
+                    ) : null}
+                </Modal>
                 <Modal
                     title="生成提示词"
                     open={promptGeneratorOpen}

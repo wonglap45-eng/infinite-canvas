@@ -265,6 +265,9 @@ type ReversePromptSplitResult = NonNullable<ReturnType<typeof splitReversePrompt
 
 function splitReverseRoutePlans(content: string) {
     const text = sanitizeReversePromptOutput(content.trim());
+    const jsonPlans = splitReverseRoutePlansFromJson(text);
+    if (jsonPlans) return jsonPlans;
+
     const markerPattern = /【(?:路线规划|设计方案)\s*([1-5])\s*(?:[｜|]\s*([^】]+))?】/g;
     const matches = Array.from(text.matchAll(markerPattern));
     if (!matches.length) return null;
@@ -282,6 +285,79 @@ function splitReverseRoutePlans(content: string) {
         .filter((item) => item.content);
 
     return plans.length === 5 ? plans : null;
+}
+
+function splitReverseRoutePlansFromJson(text: string): ReverseWorkflowPlan[] | null {
+    const parsed = parseLooseJson(text);
+    const source = Array.isArray(parsed) ? parsed : isPlainRecord(parsed) && Array.isArray(parsed.plans) ? parsed.plans : null;
+    if (!source || source.length !== 5) return null;
+
+    const plans = source
+        .map((item, index) => {
+            if (!isPlainRecord(item)) return null;
+            const title = stringField(item, "title") || stringField(item, "name") || `独立方案 ${index + 1}`;
+            const designCommand = stringField(item, "designCommand") || stringField(item, "design_command") || stringField(item, "design命题") || stringField(item, "设计命题");
+            const coreMechanism = stringField(item, "coreMechanism") || stringField(item, "core_mechanism") || stringField(item, "核心变化机制");
+            const evidence = stringField(item, "evidence") || stringField(item, "参考证据");
+            const productMigration = stringField(item, "productMigration") || stringField(item, "product_migration") || stringField(item, "产品迁移");
+            const textHandling = stringField(item, "textHandling") || stringField(item, "text_handling") || stringField(item, "文字与信息处理");
+            const fixedRules = stringField(item, "fixedRules") || stringField(item, "fixed_rules") || stringField(item, "固定保留项");
+            const avoid = stringField(item, "avoid") || stringField(item, "不做什么");
+            const difference = stringField(item, "difference") || stringField(item, "与其他方案的区别");
+            const content = [
+                ["设计命题", designCommand],
+                ["核心变化机制", coreMechanism],
+                ["参考证据", evidence],
+                ["产品迁移", productMigration],
+                ["文字与信息处理", textHandling],
+                ["固定保留项", fixedRules],
+                ["不做什么", avoid],
+                ["与其他方案的区别", difference],
+            ]
+                .filter(([, value]) => value)
+                .map(([label, value]) => `${label}：${value}`)
+                .join("\n");
+            return content ? { index: index + 1, title: title.trim(), content } : null;
+        })
+        .filter(Boolean) as ReverseWorkflowPlan[];
+
+    return plans.length === 5 ? plans : null;
+}
+
+function parseLooseJson(text: string): unknown {
+    const candidates = [
+        text.trim(),
+        ...(Array.from(text.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)).map((match) => match[1]?.trim()).filter(Boolean) as string[]),
+        jsonSlice(text, "[", "]"),
+        jsonSlice(text, "{", "}"),
+    ].filter(Boolean);
+
+    for (const candidate of candidates) {
+        try {
+            return JSON.parse(candidate);
+        } catch {
+            // Keep trying less strict candidates.
+        }
+    }
+    return null;
+}
+
+function jsonSlice(text: string, open: string, close: string) {
+    const start = text.indexOf(open);
+    const end = text.lastIndexOf(close);
+    return start >= 0 && end > start ? text.slice(start, end + 1) : "";
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+    return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function stringField(record: Record<string, unknown>, key: string) {
+    const value = record[key];
+    if (typeof value === "string") return value.trim();
+    if (Array.isArray(value)) return value.map((item) => (typeof item === "string" ? item : JSON.stringify(item))).join("；").trim();
+    if (isPlainRecord(value)) return Object.entries(value).map(([itemKey, itemValue]) => `${itemKey}：${typeof itemValue === "string" ? itemValue : JSON.stringify(itemValue)}`).join("；").trim();
+    return "";
 }
 
 function cleanSingleReversePrompt(content: string) {
@@ -357,18 +433,23 @@ ${modeRule}
 6. 允许提出参考图中没有直接出现、但能从原图商业目的和视觉语法推导出的新图形、材质、信息组织或制作方式；不能复制参考产品品牌、包装、原文案或具体事实。
 7. 不要写成最终生图提示词，不要虚构用户产品名称、规格、功效或包装文字。
 
-只输出五条设计方案，使用以下格式，不要输出开场白、总结或额外方向：
-【设计方案1｜自拟标题】
-设计命题：...
-核心变化机制：...
-参考证据：...
-产品迁移：...
-文字与信息处理：...
-固定保留项：...
-不做什么：...
-与其他方案的区别：...
+只输出一个合法 JSON 对象，不要 Markdown，不要代码块，不要开场白，不要总结。JSON 必须能被 JSON.parse 直接解析。
+根对象只能包含一个键：plans。
+plans 必须是长度正好为 5 的数组。
+plans 数组里的每个对象都只能包含这些字符串键：title、designCommand、coreMechanism、evidence、productMigration、textHandling、fixedRules、avoid、difference。
+不要把字段说明、字数说明或本段规则复制进 JSON 值里。JSON 值必须是你根据原图独立思考后写出的实际方案内容。
+字段内容要求：
+- title：短标题。
+- designCommand：80-140 字，说明本方案最终要形成什么样的画面，不写抽象风格词。
+- coreMechanism：60-120 字，说明本方案独有的核心变化机制，以及它如何改变画面成立方式。
+- evidence：60-120 字，引用原图中至少两项具体可见事实作为依据。
+- productMigration：50-100 字，说明用户新产品如何进入这个画面关系，不能复制参考产品身份。
+- textHandling：50-100 字，说明原图文字结构如何转译为用户产品自己的文字层级。
+- fixedRules：40-90 字，说明必须保留用户新产品真实外观、品牌、包装结构、颜色、标签位置和比例。
+- avoid：40-90 字，明确不做什么。
+- difference：50-100 字，说明它和另外四套方案在画面成立方式上的根本差异。
 
-一直到【设计方案5｜自拟标题】。
+五个 title 和 coreMechanism 不能同义改写，不能共享同一个目标画面骨架。
 
     原参考图和视觉拆解分析（图片优先）：
 ${compactAnalysis}`;
@@ -1954,10 +2035,10 @@ function CanvasWorkspacePage() {
                 requestConfig,
                 buildReverseVisionMessages(buildReversePromptRoutePlansRequest(reverseWorkflow.analysis, buildImagePromptReversePreset(reverseWorkflow.mode)), imageDataUrl),
                 () => {},
-                { temperature: 0.9, topP: 0.98, maxTokens: 4200 },
+                { temperature: 0.85, topP: 0.95, maxTokens: 6500 },
             );
             const plans = splitReverseRoutePlans(response);
-            if (!plans || plans.length !== 5) throw new Error("模型没有返回五套完整设计方案，请重新生成方案");
+            if (!plans || plans.length !== 5) throw new Error(`模型返回了内容，但没有解析到五套完整设计方案。原始返回前 300 字：${response.slice(0, 300)}`);
             setReverseWorkflow((current) => (current ? { ...current, stage: "plans", plans, loading: false } : current));
         } catch (error) {
             const details = error instanceof Error ? error.message : "设计方案生成失败";

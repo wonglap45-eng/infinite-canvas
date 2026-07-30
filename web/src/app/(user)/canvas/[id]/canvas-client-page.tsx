@@ -335,22 +335,22 @@ function buildReverseVisionMessages(prompt: string, imageDataUrl: string): AiTex
 }
 
 function buildReversePromptRoutePlansRequest(analysis: string, sourcePrompt: string) {
-    const compactAnalysis = analysis.length > 5200 ? `${analysis.slice(0, 5200)}\n\n（以上为系统截取的核心拆解内容；原参考图会同时提供给你，请以图片证据为准。）` : analysis;
+    const compactAnalysis = analysis.length > 5200 ? `${analysis.slice(0, 5200)}\n\n（以上为系统截取的核心拆解内容；请以本次附带的原参考图为最终证据。）` : analysis;
     const modeRule = sourcePrompt.includes("本次反推用途：主图")
         ? "本次用途是主图：五条路线都必须适合白色或接近纯白背景，但白底只是共同底线，不是路线差异。"
         : "本次用途是副图：可以迁移参考图中真实存在的环境、氛围、信息表达和视觉动线，也可以在同一商业视觉语法下提出合理的新表达。";
 
-    return `你是一名商业视觉创意总监。你正在为后续的视觉模型制定五份互相独立的设计方案。下面有第一步视觉拆解分析；原参考图不会在本次请求中提供，所以只能依据分析中明确记录的图片事实和设计推理，不得复制参考产品事实。
+    return `你是一名商业视觉创意总监。你正在为后续的视觉模型制定五份互相独立的设计方案。本次请求同时附带第一步视觉拆解分析和原参考图；必须重新查看原图，不能只依据文字分析。
 
 ${modeRule}
 
-先从分析中提取参考图的视觉语法，再为五个方案分别选择不同的“核心变化机制”。核心变化机制必须是实际设计动作或商业表达方式，例如信息图结构、材质/工艺表现、图形语义、卖点承载方式、产品与辅助元素的关系、使用场景的表达、品牌信息的组织方式等；具体选择必须由当前图片推导，不能套用固定五类方向。
+    先从原图提取真实存在的视觉语法、文字结构、产品关系和商业目的，再为五个方案分别提出不同的“核心变化机制”。核心变化机制必须是能改变最终画面观感和设计逻辑的实际决策，具体选择必须由当前图片推导，不能套用固定五类方向。不要把“换一个位置、换一个留白、换一个背景颜色、换几个形容词”当作独立方案。
 
 五个方案必须满足：
-1. 每个方案只设一个主导变化机制，并说明这个机制解决什么视觉或商业问题。
+    1. 每个方案只设一个主导变化机制，并说明这个机制如何改变最终画面的视觉叙事、信息组织、材质表达或产品呈现方式。
 2. 五个主导变化机制必须互不相同；“产品放左/放右”“文字放上/放下”“换一个背景颜色”不能单独算作不同方案。
 3. 允许提出参考图中没有直接出现、但与参考图的商业目的、材质逻辑和视觉语法相容的新表达；不能复制竞品品牌、包装、原文案或具体事实。
-4. 每条方案都要说明：方案目的、主导变化机制、参考证据、产品如何替换为用户新产品、文字/信息如何处理、固定保留项、明确不做什么、与其他方案的区别。
+    4. 每条方案都要说明：方案目的、主导变化机制、原图证据、产品如何替换为用户新产品、原图文字如何被识别和迁移、固定保留项、明确不做什么、与其他方案的区别。必须指出该方案与另外四条在“画面如何成立”上的根本差异。
 5. 不要写成最终生图提示词，不要虚构用户产品名称、规格、功效或包装文字。
 
 只输出五条设计方案，使用以下格式，不要输出开场白、总结或额外方向：
@@ -366,21 +366,20 @@ ${modeRule}
 
 一直到【设计方案5｜自拟标题】。
 
-参考图视觉拆解分析：
+    原参考图和视觉拆解分析（图片优先）：
 ${compactAnalysis}`;
 }
 
-function buildReversePromptSingleFinalRequest(analysis: string, routePlan: string, previousPrompts: string[], sourcePrompt: string, index: number) {
+function buildReversePromptSingleFinalRequest(analysis: string, routePlan: string, sourcePrompt: string, index: number) {
     const compactAnalysis = analysis.length > 3200 ? analysis.slice(0, 3200) : analysis;
     const compactRoute = routePlan.length > 1800 ? routePlan.slice(0, 1800) : routePlan;
-    const compactPrevious = previousPrompts.length ? previousPrompts.map((prompt, previousIndex) => `已完成方案 ${previousIndex + 1}：${prompt.slice(0, 1400)}`).join("\n\n") : "目前没有已完成方案，这是第一条。";
     const modeRule = sourcePrompt.includes("本次反推用途：主图")
         ? "这是主图任务：背景使用白色或接近纯白，但不要因此把所有方案都写成同一种居中白底陈列；以用户上传的新产品为唯一产品主体，不添加人物、生活场景或参考产品。"
         : "这是副图任务：根据参考图中真实可见的场景、氛围、信息表达和构图机制生成不同画面，不把参考产品本身带入新图。";
 
     return `请再次查看本次请求中附带的原参考图片，只为第 ${index} 条设计方案写一条可以直接交给图片生成模型执行的中文提示词。原参考图片是事实依据，下面的文字只是辅助，不能只根据文字摘要写模板。${modeRule}
 
-本条必须严格执行“本设计方案”的核心变化机制，不要退回通用产品白底模板。方案是从参考图视觉语法和设计推理得出的独立决策；如果本条与下面已完成方案只在主体位置、阅读顺序、留白区或视觉重心上不同，必须回到核心变化机制重新写。允许使用方案中明确提出的合理新表达，但不能复制参考产品事实，也不能只替换形容词。
+    本条必须严格执行“本设计方案”的核心变化机制，不要退回通用产品白底模板。方案是从参考图视觉语法和设计推理得出的独立决策；不能只替换形容词、材质词或主体位置来制造差异。允许使用方案中明确提出的合理新表达，但不能复制参考产品事实。
 
 请严格遵守：
 1. 以用户上传的新产品图为唯一产品主体，保留其真实外观、品牌、包装结构、颜色、标签位置、比例和图片中确实可读的文字；不得把参考产品品牌、产品名、文案、规格、功效或图形文字复制到新图。
@@ -395,8 +394,7 @@ ${compactAnalysis}
 本条路线规划：
 ${compactRoute}
 
-已完成方案（仅用于排除重复，不要复制）：
-${compactPrevious}`;
+    请不要参考其他方案的提示词，也不要假设其他方案写了什么；只根据原图、视觉拆解和本条设计方案独立完成这一条。`;
 }
 
 function createCanvasNode(type: CanvasNodeType, position: Position, metadata?: CanvasNodeMetadata): CanvasNodeData {
@@ -1940,11 +1938,18 @@ function CanvasWorkspacePage() {
         }
         setReverseWorkflow((current) => (current ? { ...current, loading: true, error: undefined } : current));
         try {
+            const imageDataUrl = await imageToDataUrl({
+                dataUrl: reverseWorkflow.node.metadata.content,
+                storageKey: reverseWorkflow.node.metadata.storageKey,
+            });
+            if (!imageDataUrl || !imageDataUrl.startsWith("data:image/")) {
+                throw new Error("参考图无法转换为可发送的图片数据，请重新上传图片");
+            }
             const response = await requestImageQuestion(
                 requestConfig,
-                [{ role: "user", content: buildReversePromptRoutePlansRequest(reverseWorkflow.analysis, buildImagePromptReversePreset(reverseWorkflow.mode)) }],
+                buildReverseVisionMessages(buildReversePromptRoutePlansRequest(reverseWorkflow.analysis, buildImagePromptReversePreset(reverseWorkflow.mode)), imageDataUrl),
                 () => {},
-                { temperature: 0.85, topP: 0.98, maxTokens: 3600 },
+                { temperature: 0.9, topP: 0.98, maxTokens: 4200 },
             );
             const plans = splitReverseRoutePlans(response);
             if (!plans || plans.length !== 5) throw new Error("模型没有返回五套完整设计方案，请重新生成方案");
@@ -1978,7 +1983,7 @@ function CanvasWorkspacePage() {
             for (const [index, plan] of reverseWorkflow.plans.entries()) {
                 const generated = await requestImageQuestion(
                     requestConfig,
-                    buildReverseVisionMessages(buildReversePromptSingleFinalRequest(reverseWorkflow.analysis, plan.content, generatedPrompts, buildImagePromptReversePreset(reverseWorkflow.mode), index + 1), imageDataUrl),
+                    buildReverseVisionMessages(buildReversePromptSingleFinalRequest(reverseWorkflow.analysis, plan.content, buildImagePromptReversePreset(reverseWorkflow.mode), index + 1), imageDataUrl),
                     () => {},
                     { temperature: 1.05, topP: 0.98, maxTokens: 2200 },
                 );
@@ -2818,29 +2823,29 @@ function CanvasWorkspacePage() {
                                   const analysisContent = analysis || analysisStreamed;
                                   const routePlans = await requestImageQuestion(
                                       generationConfig,
-                                      [{ role: "user", content: buildReversePromptRoutePlansRequest(analysisContent, effectivePrompt) }],
+                                      buildNodeResponseMessages({ ...generationContext, prompt: buildReversePromptRoutePlansRequest(analysisContent, effectivePrompt) }),
                                       () => {},
-                                      { signal: controller.signal, temperature: 0.75, topP: 0.95, maxTokens: 2600 },
+                                      { signal: controller.signal, temperature: 0.9, topP: 0.98, maxTokens: 4200 },
                                   );
                                   if (controller.signal.aborted) return [{ nodeId: targetNodeId, content: analysisContent }];
                                   const routePlanItems = splitReverseRoutePlans(routePlans);
                                   if (!routePlanItems) throw new Error("视觉模型没有返回五条独立路线，请重试");
-                                  const generatedPrompts: string[] = [];
-                                  for (const [planIndex, routePlan] of routePlanItems.entries()) {
+                                   const generatedPrompts: string[] = [];
+                                   for (const [planIndex, routePlan] of routePlanItems.entries()) {
                                       if (controller.signal.aborted) return [{ nodeId: targetNodeId, content: analysisContent }];
                                       const generated = await requestImageQuestion(
                                           generationConfig,
                                           buildNodeResponseMessages({
                                               ...generationContext,
-                                              prompt: buildReversePromptSingleFinalRequest(analysisContent, routePlan.content, generatedPrompts, effectivePrompt, planIndex + 1),
+                                              prompt: buildReversePromptSingleFinalRequest(analysisContent, routePlan.content, effectivePrompt, planIndex + 1),
                                           }),
                                           () => {},
                                           { signal: controller.signal, temperature: 1.05, topP: 0.98, maxTokens: 1800 },
                                       );
-                                      const cleaned = cleanSingleReversePrompt(generated);
-                                      if (!cleaned || cleaned === "没有返回内容") throw new Error(`第 ${planIndex + 1} 条独立提示词为空，请重试`);
-                                      generatedPrompts.push(cleaned);
-                                  }
+                                       const cleaned = cleanSingleReversePrompt(generated);
+                                       if (!cleaned || cleaned === "没有返回内容") throw new Error(`第 ${planIndex + 1} 条独立提示词为空，请重试`);
+                                       generatedPrompts.push(cleaned);
+                                   }
                                   const promptOutput = routePlanItems.map((routePlan, index) => `【可连线提示词${index + 1}｜${routePlan.title}】\n${generatedPrompts[index]}`).join("\n\n");
                                   streamed = `${analysisContent}\n\n${promptOutput}`;
                                   return [{ nodeId: targetNodeId, content: streamed }];

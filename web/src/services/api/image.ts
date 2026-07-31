@@ -110,6 +110,7 @@ type UrlImagePayload = {
     prompt: string;
     n?: number;
     size?: string;
+    input_fidelity?: "low" | "high";
     input_references?: OpenRouterImageReference[];
 };
 type AsyncImageJobStart = { jobId?: string; status?: string; error?: string };
@@ -513,6 +514,7 @@ async function requestUrlImageEdit(config: AiConfig, prompt: string, references:
         prompt: withSystemPrompt(config, prompt),
         n: 1,
         ...(requestSize ? { size: requestSize } : {}),
+        ...(options?.referenceMode === "redesign-label" ? { input_fidelity: "low" as const } : {}),
         input_references: await toOpenRouterImageReferences(fullReferences),
     };
 
@@ -1100,7 +1102,7 @@ export async function requestEdit(config: AiConfig, prompt: string, references: 
     if (usesUrlResponse) {
         let multipartError: unknown;
         try {
-            const images = parseImagePayload(await postAsyncImageForm(requestConfig, "/images/edits", await buildImageEditFormData(requestConfig, requestPrompt, references, mask, quality, requestSize, 1), options));
+            const images = parseImagePayload(await postAsyncImageForm(requestConfig, "/images/edits", await buildImageEditFormData(requestConfig, requestPrompt, references, mask, quality, requestSize, 1, options?.referenceMode), options));
             return await normalizeGeneratedImagesToSize(images, requestSize);
         } catch (error) {
             multipartError = error;
@@ -1116,7 +1118,7 @@ export async function requestEdit(config: AiConfig, prompt: string, references: 
         }
     }
 
-    const formData = await buildImageEditFormData(requestConfig, requestPrompt, references, mask, quality, requestSize, n);
+    const formData = await buildImageEditFormData(requestConfig, requestPrompt, references, mask, quality, requestSize, n, options?.referenceMode);
 
     try {
         const response = await axios.post<ImageApiResponse>(aiApiUrl(requestConfig, "/images/edits"), formData, {
@@ -1130,7 +1132,7 @@ export async function requestEdit(config: AiConfig, prompt: string, references: 
     }
 }
 
-async function buildImageEditFormData(config: AiConfig, prompt: string, references: ReferenceImage[], mask: ReferenceImage | undefined, quality: string | undefined, requestSize: string | undefined, count: number) {
+async function buildImageEditFormData(config: AiConfig, prompt: string, references: ReferenceImage[], mask: ReferenceImage | undefined, quality: string | undefined, requestSize: string | undefined, count: number, referenceMode?: ImageReferenceMode) {
     const formData = new FormData();
     formData.set("model", config.model);
     formData.set("prompt", withSystemPrompt(config, prompt));
@@ -1139,6 +1141,7 @@ async function buildImageEditFormData(config: AiConfig, prompt: string, referenc
     formData.set("output_format", IMAGE_OUTPUT_FORMAT);
     if (quality) formData.set("quality", quality);
     if (requestSize) formData.set("size", requestSize);
+    if (referenceMode === "redesign-label") formData.set("input_fidelity", "low");
     const files = await Promise.all(references.map(async (image) => dataUrlToFile({ ...image, dataUrl: await imageToDataUrl(image) })));
     files.forEach((file) => formData.append("image", file));
     if (mask) formData.set("mask", dataUrlToFile(mask));

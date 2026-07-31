@@ -382,6 +382,12 @@ function sanitizeReversePromptOutput(content: string) {
         .replace(/\b(?:image|img)[-_ ]?\d+\b/gi, "参考图片");
 }
 
+function enforceLabelRedesignExecution(prompt: string) {
+    return `${prompt.trim()}
+
+执行优先级：先完整覆盖参考产品包装可印刷区域内的旧印刷视觉，再按本方案重新设计。旧标签的背景、色带、波浪、分区、图标行、版式骨架、文字位置与层级、配色比例、字体组合、边框、纹理和表面效果均不得原样保留；参考图只提供物理包装、真实品牌身份和可确认的文字事实。品牌、产品名、规格等真实内容可以重新排版，但不得虚构或改写事实。成片在缩略图尺寸下也必须能一眼看出标签视觉系统已经更换，不能只是原图微调。`;
+}
+
 function buildReversePromptAnalysisOnlyRequest(prompt: string) {
     const isMain = prompt.includes("本次反推用途：主图");
     const modeRule = isMain
@@ -529,12 +535,13 @@ function buildReversePromptFinalBatchRequest(analysis: string, routePlans: Rever
 
 五条之间只执行方案规定的包装标签差异：
 - 只在包装正面、侧面或原有标签可印刷区域内重做视觉设计。
-- 保留用户产品真实品牌、产品名、规格、必要说明和已有文字事实；可以重建字号、层级、对齐、留白和组合关系，但不能改写、删除关键事实或虚构新文案。
+- 参考图的旧印刷层必须整体覆盖后重建。旧标签背景、色带、波浪、分区、图标行、版式骨架、文字位置、信息层级、配色比例、字体组合、边框、纹理和表面效果都不得原样沿用。
+- 保留用户产品真实品牌身份、产品名、规格、必要说明和已有文字事实；这些内容只作为新标签的信息素材，可以重建字号、层级、对齐、留白和组合关系，但不能改写、删除关键事实或虚构新文案。
 - 每条必须写清独有的核心标签母题、图形如何分布、文字如何建立层级、色彩如何协作、局部纹理或印刷工艺如何呈现。
 - 五套不能只是颜色或装饰细节不同，任意两套至少在核心母题、信息层级、版面结构、图形分布、色彩关系和工艺表现中的两项明显不同。
-- 参考图只提供设计方法，不复制参考品牌、产品名、原文案和具体图形。
+- 参考图只提供物理包装、真实信息和可迁移的设计分析，不复制旧标签的视觉结果。若某个方案仍会生成与旧标签近似的成片，必须在输出前主动改写该方案。
 
-每条 260-420 个中文字，以“生成一张符合 Amazon 展示要求的纯白底包装主图”开头。先说明固定画面和真实产品，再用主要篇幅说明本方案独有的标签设计，最后重申所有变化仅限包装印刷区域。
+每条 260-420 个中文字，以“生成一张符合 Amazon 展示要求的纯白底包装主图”开头。先用一句说明固定画面和真实产品，再用主要篇幅说明本方案独有的全新标签设计，最后明确旧印刷层必须被整体替换且所有变化仅限包装印刷区域。不得在最终提示词中复述旧标签的色带、波浪、图标行、旧文字位置或旧配色作为目标设计。
 
 按以下标记输出，除五个标记和正文外不要输出其他内容：
 【可连线提示词1｜标题】至【可连线提示词5｜标题】
@@ -2161,7 +2168,7 @@ function CanvasWorkspacePage() {
             if (!split || split.prompts.length !== 5) {
                 throw new Error(`模型返回了内容，但没有解析到五条完整提示词。原始返回前 300 字：${generated.slice(0, 300)}`);
             }
-            setReverseWorkflow((current) => (current ? { ...current, prompts: split.prompts.map((item) => item.content), loading: false } : current));
+            setReverseWorkflow((current) => (current ? { ...current, prompts: split.prompts.map((item) => (current.mode === "main" ? enforceLabelRedesignExecution(item.content) : item.content)), loading: false } : current));
         } catch (error) {
             const details = error instanceof Error ? error.message : "完整提示词生成失败";
             setReverseWorkflow((current) => (current ? { ...current, loading: false, error: details } : current));

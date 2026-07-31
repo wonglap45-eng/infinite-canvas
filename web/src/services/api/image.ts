@@ -3,7 +3,7 @@ import axios from "axios";
 import { buildApiUrl, resolveModelRequestConfig, type AiConfig, type ModelChannel } from "@/stores/use-config-store";
 import { nanoid } from "nanoid";
 import { dataUrlToFile } from "@/lib/image-utils";
-import { buildImageReferencePromptText, imageReferenceLabel } from "@/lib/image-reference-prompt";
+import { buildImageReferencePromptText, imageReferenceLabel, type ImageReferenceMode } from "@/lib/image-reference-prompt";
 import { imageToDataUrl } from "@/services/image-storage";
 import type { ReferenceImage } from "@/types/image";
 
@@ -103,7 +103,7 @@ type GeminiPayload = {
     promptFeedback?: { blockReason?: string };
 };
 type GeminiStreamState = { buffer: string; text: string; toolCalls: ResponseToolCall[]; error?: string };
-type RequestOptions = { signal?: AbortSignal; temperature?: number; topP?: number; maxTokens?: number; stream?: boolean };
+type RequestOptions = { signal?: AbortSignal; temperature?: number; topP?: number; maxTokens?: number; stream?: boolean; referenceMode?: ImageReferenceMode };
 type OpenRouterImageReference = { type: "image_url"; image_url: { url: string } };
 type UrlImagePayload = {
     model: string;
@@ -380,7 +380,7 @@ async function postAsyncImageForm(config: AiConfig, path: string, formData: Form
     try {
         startResponse = await fetch(aiApiUrl(config, path), {
             method: "POST",
-            headers: { "x-eons-async": "1" },
+            headers: { "x-eons-async": "1", "x-eons-reference-mode": options?.referenceMode || "preserve-product" },
             body: formData,
             signal: options?.signal,
         });
@@ -1084,7 +1084,7 @@ export async function requestGeneration(config: AiConfig, prompt: string, option
 export async function requestEdit(config: AiConfig, prompt: string, references: ReferenceImage[], mask?: ReferenceImage, options?: RequestOptions) {
     const requestConfig = resolveModelRequestConfig(config, config.model || config.imageModel);
     const n = Math.max(1, Math.min(3, Math.floor(Math.abs(Number(config.count)) || 1)));
-    const requestPrompt = buildImageReferencePromptText(prompt, references);
+    const requestPrompt = buildImageReferencePromptText(prompt, references, options?.referenceMode);
     const maskReferencePrompt = mask ? buildMaskReferencePrompt(requestPrompt, references.length) : requestPrompt;
     const referencesWithMask = mask ? [...references, mask] : references;
     const quality = normalizeQuality(config.quality);
@@ -1119,7 +1119,10 @@ export async function requestEdit(config: AiConfig, prompt: string, references: 
     const formData = await buildImageEditFormData(requestConfig, requestPrompt, references, mask, quality, requestSize, n);
 
     try {
-        const response = await axios.post<ImageApiResponse>(aiApiUrl(requestConfig, "/images/edits"), formData, { headers: aiHeaders(requestConfig), signal: options?.signal });
+        const response = await axios.post<ImageApiResponse>(aiApiUrl(requestConfig, "/images/edits"), formData, {
+            headers: { ...aiHeaders(requestConfig), "x-eons-reference-mode": options?.referenceMode || "preserve-product" },
+            signal: options?.signal,
+        });
         const images = parseImagePayload(response.data);
         return await normalizeGeneratedImagesToSize(images, requestSize);
     } catch (error) {

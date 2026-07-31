@@ -1,3 +1,5 @@
+import type { ImageReferenceMode } from "@/lib/image-reference-prompt";
+
 export type Position = {
     x: number;
     y: number;
@@ -52,6 +54,7 @@ export type CanvasNodeMetadata = {
     batchUsesReferenceImages?: boolean;
     primaryImageId?: string;
     imageBatchExpanded?: boolean;
+    imageReferenceMode?: ImageReferenceMode;
     storageKey?: string;
     mimeType?: string;
     bytes?: number;

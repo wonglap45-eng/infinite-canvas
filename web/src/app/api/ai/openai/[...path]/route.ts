@@ -196,7 +196,7 @@ function copyRequestHeaders(request: NextRequest, target: UpstreamTarget, body?:
     const headers = new Headers();
     request.headers.forEach((value, key) => {
         const lowerKey = key.toLowerCase();
-        if (HOP_HEADERS.has(lowerKey) || lowerKey === "authorization" || lowerKey === "cookie" || lowerKey === "accept-encoding") return;
+        if (HOP_HEADERS.has(lowerKey) || lowerKey === "authorization" || lowerKey === "cookie" || lowerKey === "accept-encoding" || lowerKey === "x-eons-reference-mode") return;
         headers.set(key, value);
     });
     headers.set("authorization", `Bearer ${target.apiKey}`);
@@ -237,6 +237,7 @@ async function proxyOpenAI(request: NextRequest, context: RouteContext) {
             hasImageInput: payloadInfo.hasImageInput,
             imageInputCount: payloadInfo.imageInputCount,
             visionModel: payloadInfo.hasImageInput ? visionModel() : undefined,
+            referenceMode: request.headers.get("x-eons-reference-mode") || undefined,
         });
         if (payloadInfo.hasImageInput && envValue("OPENAI_REJECT_IMAGE_TEXT_WITHOUT_VISION").toLowerCase() === "true" && !visionModel() && target.kind === "text") {
             return NextResponse.json(

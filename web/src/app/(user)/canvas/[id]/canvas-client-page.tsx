@@ -2180,7 +2180,13 @@ function CanvasWorkspacePage() {
                 y: source.position.y + source.height / 2 - ((reverseWorkflow.prompts.length - 1) * (LONG_PROMPT_NODE_SIZE.height + 36)) / 2 + index * (LONG_PROMPT_NODE_SIZE.height + 36),
             };
             return {
-                ...createSizedTextNode(center, LONG_PROMPT_NODE_SIZE, { content, prompt: content, status: NODE_STATUS_SUCCESS, fontSize: READABLE_TEXT_FONT_SIZE }),
+                ...createSizedTextNode(center, LONG_PROMPT_NODE_SIZE, {
+                    content,
+                    prompt: content,
+                    status: NODE_STATUS_SUCCESS,
+                    fontSize: READABLE_TEXT_FONT_SIZE,
+                    imageReferenceMode: reverseWorkflow.mode === "main" ? "redesign-label" : "preserve-product",
+                }),
                 title: `可连线提示词 ${index + 1}｜${plan?.title || "设计方案"}`.slice(0, 48),
             };
         });
@@ -2713,7 +2719,7 @@ function CanvasWorkspacePage() {
                             : [];
                     const referenceImages = sourceReference.length ? sourceReference : generationContext.referenceImages;
                     const generationType = referenceImages.length ? ("edit" as const) : ("generation" as const);
-                    const generationMetadata = buildImageGenerationMetadata(generationType, generationConfig, count, referenceImages);
+                    const generationMetadata = buildImageGenerationMetadata(generationType, generationConfig, count, referenceImages, generationContext.imageReferenceMode);
                     const parentConfig = NODE_DEFAULT_SIZE[isConfigNode ? CanvasNodeType.Config : isImageNode ? CanvasNodeType.Image : CanvasNodeType.Text];
                     const imageConfig = NODE_DEFAULT_SIZE[CanvasNodeType.Image];
                     const parentPosition = sourceNode?.position || { x: 0, y: 0 };
@@ -2810,7 +2816,10 @@ function CanvasWorkspacePage() {
                         const variantPrompt = imageVariationPrompt(effectivePrompt, targetIndex, count, referenceImages.length > 0);
                         try {
                             const image = referenceImages.length
-                                ? await requestEdit({ ...generationConfig, count: "1" }, variantPrompt, referenceImages, undefined, { signal: controller.signal }).then((items) => items[0])
+                                ? await requestEdit({ ...generationConfig, count: "1" }, variantPrompt, referenceImages, undefined, {
+                                      signal: controller.signal,
+                                      referenceMode: generationContext.imageReferenceMode,
+                                  }).then((items) => items[0])
                                 : await requestGeneration({ ...generationConfig, count: "1" }, variantPrompt, { signal: controller.signal }).then((items) => items[0]);
                             const uploaded = await uploadImage(image.dataUrl);
                             const imageSize = fitNodeSize(uploaded.width, uploaded.height, imageConfig.width, imageConfig.height);
@@ -3159,13 +3168,26 @@ function CanvasWorkspacePage() {
                     return;
                 }
 
-                const image = useReferenceImages ? await requestEdit(generationConfig, prompt, retryImages, undefined, { signal: controller.signal }).then((items) => items[0]) : await requestGeneration(generationConfig, prompt, { signal: controller.signal }).then((items) => items[0]);
+                const image = useReferenceImages
+                    ? await requestEdit(generationConfig, prompt, retryImages, undefined, {
+                          signal: controller.signal,
+                          referenceMode: savedImageMetadata?.imageReferenceMode || context?.imageReferenceMode,
+                      }).then((items) => items[0])
+                    : await requestGeneration(generationConfig, prompt, { signal: controller.signal }).then((items) => items[0]);
                 const uploadedImage = await uploadImage(image.dataUrl);
                 const imageConfig = NODE_DEFAULT_SIZE[CanvasNodeType.Image];
                 const imageSize = fitNodeSize(uploadedImage.width, uploadedImage.height, imageConfig.width, imageConfig.height);
                 const generationMetadata = savedImageMetadata?.generationType
-                    ? { generationType: savedImageMetadata.generationType, model: generationConfig.model, size: generationConfig.size, quality: generationConfig.quality, count: savedImageMetadata.count || 1, references: savedImageMetadata.references }
-                    : buildImageGenerationMetadata(useReferenceImages ? "edit" : "generation", generationConfig, 1, retryImages);
+                    ? {
+                          generationType: savedImageMetadata.generationType,
+                          model: generationConfig.model,
+                          size: generationConfig.size,
+                          quality: generationConfig.quality,
+                          count: savedImageMetadata.count || 1,
+                          references: savedImageMetadata.references,
+                          imageReferenceMode: savedImageMetadata.imageReferenceMode,
+                      }
+                    : buildImageGenerationMetadata(useReferenceImages ? "edit" : "generation", generationConfig, 1, retryImages, context?.imageReferenceMode);
                 setNodes((prev) =>
                     prev.map((item) =>
                         item.id === node.id
@@ -3989,7 +4011,13 @@ function audioMetadata(audio: UploadedFile): CanvasNodeMetadata {
     return { content: audio.url, storageKey: audio.storageKey, status: "success", bytes: audio.bytes, mimeType: audio.mimeType || "audio/mpeg", durationMs: audio.durationMs };
 }
 
-function buildImageGenerationMetadata(type: CanvasImageGenerationType, config: AiConfig, count: number, references: ReferenceImage[]): CanvasNodeMetadata {
+function buildImageGenerationMetadata(
+    type: CanvasImageGenerationType,
+    config: AiConfig,
+    count: number,
+    references: ReferenceImage[],
+    imageReferenceMode?: CanvasNodeMetadata["imageReferenceMode"],
+): CanvasNodeMetadata {
     return {
         generationType: type,
         model: config.model,
@@ -3997,6 +4025,7 @@ function buildImageGenerationMetadata(type: CanvasImageGenerationType, config: A
         quality: config.quality,
         count,
         references: references.map(referenceUrl).filter((url): url is string => Boolean(url)),
+        imageReferenceMode,
     };
 }
 

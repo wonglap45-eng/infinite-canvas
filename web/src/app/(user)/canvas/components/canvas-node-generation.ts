@@ -1,5 +1,5 @@
 import type { AiTextMessage } from "@/services/api/image";
-import { imageReferenceLabel } from "@/lib/image-reference-prompt";
+import { imageReferenceLabel, type ImageReferenceMode } from "@/lib/image-reference-prompt";
 import { seedanceReferenceLabel } from "@/lib/seedance-video";
 import type { ReferenceImage } from "@/types/image";
 import type { ReferenceAudio, ReferenceVideo } from "@/types/media";
@@ -15,6 +15,7 @@ export type NodeGenerationContext = {
     imageCount: number;
     videoCount: number;
     audioCount: number;
+    imageReferenceMode?: ImageReferenceMode;
 };
 
 export type NodeGenerationInput = {
@@ -25,6 +26,7 @@ export type NodeGenerationInput = {
     image?: ReferenceImage;
     video?: ReferenceVideo;
     audio?: ReferenceAudio;
+    imageReferenceMode?: ImageReferenceMode;
 };
 
 export function buildNodeGenerationContext(nodeId: string, nodes: CanvasNodeData[], connections: CanvasConnection[], prompt: string): NodeGenerationContext {
@@ -51,6 +53,7 @@ export function buildNodeGenerationContext(nodeId: string, nodes: CanvasNodeData
         imageCount: referenceImages.length,
         videoCount: referenceVideos.length,
         audioCount: referenceAudios.length,
+        imageReferenceMode: inputs.find((input) => input.imageReferenceMode)?.imageReferenceMode,
     };
 }
 
@@ -98,6 +101,7 @@ function buildComposerGenerationContext(inputs: NodeGenerationInput[], prompt: s
             imageCount: 0,
             videoCount: 0,
             audioCount: 0,
+            imageReferenceMode: undefined,
         };
     }
 
@@ -110,6 +114,7 @@ function buildComposerGenerationContext(inputs: NodeGenerationInput[], prompt: s
         imageCount: referenceImages.length,
         videoCount: referenceVideos.length,
         audioCount: referenceAudios.length,
+        imageReferenceMode: inputs.find((input) => input.imageReferenceMode)?.imageReferenceMode,
     };
 }
 
@@ -122,7 +127,16 @@ export function buildNodeGenerationInputs(nodeId: string, nodes: CanvasNodeData[
         const audio = readReferenceAudio(node);
         if (audio) return [{ nodeId: node.id, type: "audio" as const, title: node.title, audio }];
         const text = readNodeTextInput(node);
-        if (text) return [{ nodeId: node.id, type: "text" as const, title: node.title, text }];
+        if (text)
+            return [
+                {
+                    nodeId: node.id,
+                    type: "text" as const,
+                    title: node.title,
+                    text,
+                    imageReferenceMode: node.metadata?.imageReferenceMode || (text.includes("所有变化仅限包装印刷区") ? "redesign-label" : undefined),
+                },
+            ];
         return [];
     });
 }

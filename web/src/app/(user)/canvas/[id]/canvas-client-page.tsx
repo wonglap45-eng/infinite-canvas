@@ -204,7 +204,7 @@ function buildImagePromptReversePreset(mode: ReversePromptMode) {
     const modeRule =
         mode === "main"
             ? `本次反推用途：主图。
-目标是生成符合 Amazon 主图要求的纯白底商品摄影图。参考图中位于商品外部的文字、信息卡、徽章、图标、轨道、蓝图、装饰线、色块和场景元素只能被识别为“不迁移”，不能进入主图方案。`
+目标是生成符合 Amazon 展示要求的纯白底包装标签设计主图。白底、产品物理结构、商品数量、机位、构图和光影保持固定，五套差异必须只发生在包装可印刷表面的标签视觉系统中。`
             : `本次反推用途：副图。
 允许迁移参考图真实可见的场景、氛围、信息表达和商业视觉关系，但不能复制参考产品内容。`;
 
@@ -383,10 +383,19 @@ function sanitizeReversePromptOutput(content: string) {
 }
 
 function buildReversePromptAnalysisOnlyRequest(prompt: string) {
-    const modeRule = prompt.includes("本次反推用途：主图")
-        ? `本次用途是 Amazon 主图反推。分析目标不是迁移参考图的平面设计，而是识别其中可用于合规商品摄影的事实：实际售卖单元、包装组成、正面/侧面/顶部可见关系、机位、透视、占画比例、间距、遮挡、接地阴影、材质和灯光。
-参考图中商品外部的标题、卖点、信息卡、徽章、图标、装饰线、轨道、蓝图、色块、边框、道具和场景背景都必须列入“不迁移”。`
+    const isMain = prompt.includes("本次反推用途：主图");
+    const modeRule = isMain
+        ? `本次用途是 Amazon 白底包装标签设计主图。必须把画面拆成三个层级：
+1. 完全锁定层：纯白背景、产品物理轮廓、包装尺寸和结构、商品数量、机位、透视、构图、占画比例、接地阴影与灯光。
+2. 固定信息层：用户产品真实品牌、产品名、规格、必要说明和包装上确实存在的文字事实；不得改写或虚构。
+3. 可设计标签层：包装可印刷区域内的核心图形、图案组织、信息层级、字体组合关系、留白节奏、色彩关系、局部材质与印刷工艺表现。
+重点分析参考图的标签为什么成立、哪些标签视觉语言可迁移、哪些竞品文字和品牌不能复制。商品外部的文字、信息卡、徽章、轨道、蓝图、道具和场景必须列为“不迁移”。`
         : "本次用途是副图反推：请完整识别参考图中真实存在的主体关系、氛围、场景、卖点表达、背景关系、信息组织、视觉动线和商业风格。";
+    const variabilityRule = isMain
+        ? `7. 明确完全不能变的内容：纯白背景、产品物理轮廓、包装尺寸与结构、商品数量、机位、构图、光影、真实品牌和文字事实；参考图的品牌、产品名、具体文案和卖点不能复制。
+8. 明确标签内部可以设计的内容：在原有可印刷区域内，分析哪些核心图形、版式层级、字体组合关系、留白、色彩、纹理和印刷工艺可以变化。物理标签边界固定，但内部视觉系统不是固定不变。`
+        : `7. 明确不能变的内容：后续上传的新产品真实外观、品牌、包装结构、标签位置、颜色和比例；参考图的品牌、产品名、具体文案和卖点不能复制。
+8. 明确可以变化的内容：根据当前图片判断哪些视觉机制可以迁移或重新设计。允许提出参考图中没有直接出现、但与参考图商业目的和视觉语法相容的新图形、材质、信息组织或制作方式；这些属于创意变化，不得复制竞品事实，也不能凭空改变用户产品身份。`;
 
     return `请基于参考图片做一次“商业视觉拆解分析”，输出必须是中文。
 
@@ -401,8 +410,7 @@ ${modeRule}
 4. 逐项记录参考图中能读到的文字及其位置、大小、层级、对齐方式和作用；看不清的写“部分文字不可读”，绝不猜写。
 5. 把“参考产品自身内容”和“可迁移的画面构成”分开：品牌、产品名、包装文字、卖点、规格属于前者；构图关系、信息组织和视觉元素属于后者。
 6. 列出图片中确实存在的可迁移元素，并说明它们在画面中的作用。不要为了凑数量添加图片里没有的元素。
-7. 明确不能变的内容：后续上传的新产品真实外观、品牌、包装结构、标签位置、颜色和比例；参考图的品牌、产品名、具体文案和卖点不能复制。
-8. 明确可以变化的内容：根据当前图片判断哪些视觉机制可以迁移或重新设计。允许提出参考图中没有直接出现、但与参考图商业目的和视觉语法相容的新图形、材质、信息组织或制作方式；这些属于创意变化，不得复制竞品事实，也不能凭空改变用户产品身份。
+${variabilityRule}
 
 输出必须是中文，内容越像给设计团队的拆解说明越好。`;
 }
@@ -423,36 +431,35 @@ function buildReversePromptRoutePlansRequest(analysis: string, sourcePrompt: str
     const compactAnalysis = compactReverseAnalysis(analysis, 5200);
     const isMain = sourcePrompt.includes("本次反推用途：主图");
     if (isMain) {
-        return `你是一名熟悉 Amazon 商品图片规范的产品摄影总监。请重新查看原参考图，并结合第一步分析，为同一件用户新产品规划 5 套真实、可执行、彼此可辨认的 Amazon 白底主图拍摄方案。
+        return `你是一名 Amazon 包装视觉设计总监。请重新查看原参考图，并结合第一步分析，为用户新产品规划 5 套真实、可执行、彼此明显不同的纯白底包装标签设计方案。
 
-主图合规底线：
-1. 背景必须是纯白 RGB 255,255,255，只展示实际售卖商品，商品完整清晰并占画面约 85%-95%。
-2. 商品外部不得出现任何文字、Logo、卖点、信息卡、徽章、图标、色块、边框、水印、轨道、蓝图、装饰线、道具或场景。
-3. 只能保留商品包装上真实存在且可读的印刷文字和品牌，不复制参考商品内容，不虚构新产品信息。
-4. 不得添加、移除、打开、拆分或替换包装、配件和内容物。后续连接的新产品图显示什么售卖单元，就只拍什么。
-5. 参考图里不合规的平面设计只能用于理解商品本体，不得迁移到方案中。
+完全锁定的共同底图：
+1. 纯白背景 RGB 255,255,255，产品完整清晰并保持当前参考画面的商品数量、位置、机位、透视、构图、占画比例、接地阴影和灯光。
+2. 保持用户新产品真实的物理轮廓、包装尺寸、容器/盒体结构、开合方式、材质边界和标签可印刷区域，不增加、删除、打开或拆分商品。
+3. 商品外部不得出现文字、卖点、信息卡、徽章、图标、色块、边框、水印、轨道、蓝图、装饰线、道具或场景。
+4. 用户产品真实品牌、产品名、规格和已有文字事实必须保留，不复制参考产品的品牌、原文案或具体产品信息，不虚构新卖点。
 
-五套方案的差异只能来自真实摄影决策：机位与透视、主要可见面、商品朝向、实际售卖单元之间的物理陈列、遮挡与间距、画面占比、接地关系、以及用于呈现材质的灯光。不得为了让方案不同而发明新的图形、文案、包装结构、内物或卖点。
+五套差异只允许发生在包装表面的可设计标签层。每套都必须根据当前参考图的视觉证据，自行推导一个不同的标签设计命题；不要套用预设风格清单。可以变化的是包装印刷区内的核心视觉母题、图形与文字的组织关系、信息层级、版面节奏、色彩关系、局部纹理以及可被摄影呈现的印刷工艺。不能改变背景、产品物理结构、拍摄画面或真实文字事实。
 
 先在内部检查五套方案：
-- 每套必须描述一个确定的成片，不写备选项。
-- 任意两套至少在“主要可见面、机位透视、实际售卖单元关系、画面占比/接地方式”中有一项明显不同。
-- 差异必须适合当前参考图所示的商品形态；不能只换形容词，也不能做成副图或详情页。
-- 如果商品形态不支持大幅变化，应如实生成五种克制的摄影构图，不得用违规视觉元素强行拉开差异。
+- 每套必须描述同一张固定白底商品画面中的一套确定标签成片，不写备选项。
+- 任意两套至少在“核心标签母题、信息层级、图形分布、版面节奏、色彩关系、印刷/材质表现”中的两项存在实质区别。
+- 不能只更换颜色、形容词或微小装饰；必须让人一眼看出五套标签的设计逻辑不同。
+- 五套都要与当前参考图的产品定位和可迁移视觉资产有关，不能为了不同而随意编造与产品无关的图案。
 
 只输出一个可被 JSON.parse 直接解析的合法 JSON 对象，不要 Markdown、代码块、开场白或总结。根对象只能包含 plans，plans 必须正好 5 项。每项只能包含字符串键：
 title、creativeThesis、visibleMechanism、referenceEvidence、targetFrame、productRole、textStrategy、visualFingerprint、nonOverlap。
 
 字段要求：
-- title：一句能看出拍摄差异的短标题。
-- creativeThesis：说明这套主图依靠什么摄影判断成立。
-- visibleMechanism：写清机位、可见面、朝向、陈列、占比和接地关系。
-- referenceEvidence：引用原图中两到三项真实商品或摄影证据。
-- targetFrame：描述最终纯白底主图，不得包含任何额外设计元素。
-- productRole：说明用户新产品作为实际售卖商品如何被完整呈现。
-- textStrategy：固定写“仅保留用户商品包装上真实存在的印刷文字，不在商品外添加文字”。
-- visualFingerprint：用一句话概括这套方案最容易辨认的摄影特征。
-- nonOverlap：指出它不能退回哪一种与其他方案相同的机位或陈列。
+- title：一句能看出标签设计差异的短标题。
+- creativeThesis：说明这套标签依靠什么视觉概念成立。
+- visibleMechanism：写清包装印刷区内具体可见的图形、版式、色彩和工艺机制。
+- referenceEvidence：引用原图中两到三项真实标签或包装视觉证据。
+- targetFrame：描述固定白底商品画面中，标签完成设计后的可见成片。
+- productRole：说明标签如何服务用户新产品的品类识别、品牌识别和购买理解。
+- textStrategy：说明真实品牌、产品名、规格与已有文字如何重新建立层级，但不得改写或新增内容。
+- visualFingerprint：用一句话概括最容易辨认的标签视觉特征。
+- nonOverlap：指出这套标签不能退回哪一种与其他方案相似的图形或版式逻辑。
 
 原参考图和视觉拆解分析（原图优先）：
 ${compactAnalysis}`;
@@ -513,16 +520,21 @@ function buildReversePromptFinalBatchRequest(analysis: string, routePlans: Rever
         .join("\n\n");
     const isMain = sourcePrompt.includes("本次反推用途：主图");
     if (isMain) {
-        return `请再次查看原参考图片，在同一次回答中把下面 5 套摄影方案改写成 5 条可直接交给图片生成模型执行的 Amazon 主图中文提示词。
+        return `请再次查看原参考图片，在同一次回答中把下面 5 套包装标签方案改写成 5 条可直接交给图片生成模型执行的 Amazon 白底包装主图中文提示词。
 
-每条都必须满足：
-- 纯白背景 RGB 255,255,255，只展示用户上传的新产品图中真实可见的实际售卖商品，完整清晰，占画面约 85%-95%。
-- 保留商品真实外观、品牌、包装结构、颜色、材质、标签位置、比例和包装上确实可读的印刷文字。
-- 不添加或删除商品、包装、配件、内物；不打开包装；不复制参考商品内容；不虚构文字、规格、功效或售卖组件。
+固定不变的画面底座：
+- 纯白背景 RGB 255,255,255，只展示用户上传的新产品，保持商品数量、物理轮廓、包装尺寸和结构、位置、机位、透视、构图、占画比例、光线和接地阴影完全一致。
 - 商品外部不出现任何文字、Logo、卖点、信息卡、徽章、图标、轨道、蓝图、装饰线、色块、边框、水印、道具、人物或生活场景。
-- 使用真实商品摄影语言，边缘清晰、颜色准确、光线自然、接地阴影克制，不做插画或信息设计。
+- 不添加、删除、打开或拆分商品与包装，不改变容器、盒体、瓶盖、袋型或标签物理边界。
 
-五条之间只执行方案规定的摄影差异。不要为了制造差异添加设计元素，也不要把五条写成冗长分析。每条 160-280 个中文字，以“生成一张符合 Amazon 要求的纯白底商品主图”开头，明确机位、主要可见面、商品朝向、实际售卖单元陈列、占画比例、灯光和阴影。
+五条之间只执行方案规定的包装标签差异：
+- 只在包装正面、侧面或原有标签可印刷区域内重做视觉设计。
+- 保留用户产品真实品牌、产品名、规格、必要说明和已有文字事实；可以重建字号、层级、对齐、留白和组合关系，但不能改写、删除关键事实或虚构新文案。
+- 每条必须写清独有的核心标签母题、图形如何分布、文字如何建立层级、色彩如何协作、局部纹理或印刷工艺如何呈现。
+- 五套不能只是颜色或装饰细节不同，任意两套至少在核心母题、信息层级、版面结构、图形分布、色彩关系和工艺表现中的两项明显不同。
+- 参考图只提供设计方法，不复制参考品牌、产品名、原文案和具体图形。
+
+每条 260-420 个中文字，以“生成一张符合 Amazon 展示要求的纯白底包装主图”开头。先说明固定画面和真实产品，再用主要篇幅说明本方案独有的标签设计，最后重申所有变化仅限包装印刷区域。
 
 按以下标记输出，除五个标记和正文外不要输出其他内容：
 【可连线提示词1｜标题】至【可连线提示词5｜标题】
@@ -530,7 +542,7 @@ function buildReversePromptFinalBatchRequest(analysis: string, routePlans: Rever
 第一步分析：
 ${compactAnalysis}
 
-五套合规摄影方案：
+五套包装标签设计方案：
 ${compactRoutes}`;
     }
 
@@ -2206,7 +2218,7 @@ function CanvasWorkspacePage() {
                 title: "选择反推用途",
                 content: (
                     <div className="space-y-2 text-sm leading-relaxed">
-                        <p>主图：生成 5 个符合 Amazon 规则的纯白底拍摄方案。差异来自机位、可见面、真实售卖组合、占比和灯光，不添加任何外部文字或图形。</p>
+                        <p>主图：白底、产品结构、构图和光影保持固定，生成 5 套明显不同的包装标签视觉方案；变化只发生在包装可印刷区域。</p>
                         <p>副图：根据参考图本身独立发散，生成 5 个差异明显的商业视觉方案，不套用固定方向。</p>
                     </div>
                 ),
@@ -3638,9 +3650,9 @@ function CanvasWorkspacePage() {
                         <div className="flex max-h-[76vh] flex-col gap-4 overflow-hidden">
                             <div className="flex flex-wrap items-center gap-2 text-sm">
                                 <span className="rounded-full bg-black px-3 py-1 text-white">1 分析参考图</span>
-                                <span className={reverseWorkflow.stage !== "analysis" ? "rounded-full bg-black px-3 py-1 text-white" : "rounded-full bg-neutral-100 px-3 py-1 text-neutral-500"}>2 生成五套{reverseWorkflow.mode === "main" ? "拍摄" : "设计"}方案</span>
+                                <span className={reverseWorkflow.stage !== "analysis" ? "rounded-full bg-black px-3 py-1 text-white" : "rounded-full bg-neutral-100 px-3 py-1 text-neutral-500"}>2 生成五套{reverseWorkflow.mode === "main" ? "标签" : "设计"}方案</span>
                                 <span className={reverseWorkflow.prompts.length === 5 ? "rounded-full bg-black px-3 py-1 text-white" : "rounded-full bg-neutral-100 px-3 py-1 text-neutral-500"}>3 生成完整提示词</span>
-                                <span className="ml-auto text-neutral-500">{reverseWorkflow.mode === "main" ? "Amazon 主图：纯白底合规摄影" : "副图模式：根据参考图动态发散"}</span>
+                                <span className="ml-auto text-neutral-500">{reverseWorkflow.mode === "main" ? "Amazon 主图：固定画面，重做包装标签" : "副图模式：根据参考图动态发散"}</span>
                             </div>
 
                             {reverseWorkflow.error ? <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{reverseWorkflow.error}</div> : null}
@@ -3666,7 +3678,7 @@ function CanvasWorkspacePage() {
                                         </div>
                                         <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4 text-sm leading-7 text-neutral-600">
                                             {reverseWorkflow.mode === "main"
-                                                ? "下一步只生成 Amazon 合规的白底拍摄方案。不会添加信息卡、徽章、轨道、蓝图、外部文字或不存在的商品内容；五套差异来自真实摄影与陈列决策。"
+                                                ? "下一步生成五套包装标签方案。白底、产品物理结构、机位、构图和光影全部固定；五套差异只来自包装印刷区内的核心图形、信息层级、版式节奏、色彩关系和工艺表现。"
                                                 : "下一步会先生成五套设计方案。每套方案必须有独立的核心变化机制，不能只改变产品左右位置、上下层级或背景颜色。"}
                                         </div>
                                         {reverseWorkflow.plans.length ? (
@@ -3681,7 +3693,7 @@ function CanvasWorkspacePage() {
                                         ) : null}
                                         <div className="flex gap-2">
                                             <Button loading={reverseWorkflow.loading} onClick={() => void runReverseWorkflowPlans()}>
-                                                {reverseWorkflow.plans.length ? "重新生成五套方案" : `生成五套${reverseWorkflow.mode === "main" ? "拍摄" : "设计"}方案`}
+                                                {reverseWorkflow.plans.length ? "重新生成五套方案" : `生成五套${reverseWorkflow.mode === "main" ? "标签" : "设计"}方案`}
                                             </Button>
                                             {reverseWorkflow.plans.length === 5 ? <Button type="primary" onClick={() => { setReverseWorkflow((current) => (current ? { ...current, stage: "prompts" } : current)); void runReverseWorkflowPrompts(); }}>确认方案并生成提示词</Button> : null}
                                         </div>

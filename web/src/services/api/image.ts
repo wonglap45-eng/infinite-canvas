@@ -103,7 +103,7 @@ type GeminiPayload = {
     promptFeedback?: { blockReason?: string };
 };
 type GeminiStreamState = { buffer: string; text: string; toolCalls: ResponseToolCall[]; error?: string };
-type RequestOptions = { signal?: AbortSignal; temperature?: number; topP?: number; maxTokens?: number };
+type RequestOptions = { signal?: AbortSignal; temperature?: number; topP?: number; maxTokens?: number; stream?: boolean };
 type OpenRouterImageReference = { type: "image_url"; image_url: { url: string } };
 type UrlImagePayload = {
     model: string;
@@ -782,10 +782,11 @@ function consumeChatStreamText(state: ChatStreamState, text: string, onDelta?: (
 }
 
 async function requestChatCompletionResponse(config: AiConfig, messages: ResponseInputMessage[], tools?: ResponseFunctionTool[], toolChoice: ToolChoice = "auto", onDelta?: (text: string) => void, options?: RequestOptions): Promise<ToolResponseResult> {
+    const useStream = options?.stream !== false;
     const body: Record<string, unknown> = {
         model: config.model,
         messages: toChatMessages(withSystemMessage(config, messages)),
-        stream: true,
+        stream: useStream,
         ...(typeof options?.temperature === "number" ? { temperature: options.temperature } : {}),
         ...(typeof options?.topP === "number" ? { top_p: options.topP } : {}),
         ...(typeof options?.maxTokens === "number" ? { max_tokens: options.maxTokens } : {}),
@@ -798,11 +799,13 @@ async function requestChatCompletionResponse(config: AiConfig, messages: Respons
         signal: options?.signal,
     });
     if (!response.ok) throw new Error(await readFetchError(response, "请求失败"));
-    if (!response.body) {
+    if (!useStream || !response.body) {
         const payload = (await response.json()) as ChatCompletionPayload;
         validateChatPayload(payload);
         const message = payload.choices?.[0]?.message;
-        return { content: message?.content || "", toolCalls: message?.tool_calls || [] };
+        const result = { content: message?.content || "", toolCalls: message?.tool_calls || [] };
+        if (result.content) onDelta?.(result.content);
+        return result;
     }
 
     const reader = response.body.getReader();

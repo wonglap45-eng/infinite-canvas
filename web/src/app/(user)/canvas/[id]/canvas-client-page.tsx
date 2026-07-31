@@ -2107,7 +2107,7 @@ function CanvasWorkspacePage() {
                 requestConfig,
                 buildReverseVisionMessages(buildReversePromptAnalysisOnlyRequest(buildImagePromptReversePreset(reverseWorkflow.mode)), imageDataUrl),
                 () => {},
-                { temperature: 0.25, topP: 0.85, maxTokens: 3600 },
+                { temperature: 0.25, topP: 0.85, maxTokens: 3600, stream: false },
             );
             setReverseWorkflow((current) => (current ? { ...current, stage: "plans", analysis, loading: false } : current));
         } catch (error) {
@@ -2126,18 +2126,11 @@ function CanvasWorkspacePage() {
         }
         setReverseWorkflow((current) => (current ? { ...current, loading: true, error: undefined } : current));
         try {
-            const imageDataUrl = await imageToDataUrl({
-                dataUrl: reverseWorkflow.node.metadata.content,
-                storageKey: reverseWorkflow.node.metadata.storageKey,
-            });
-            if (!imageDataUrl || !imageDataUrl.startsWith("data:image/")) {
-                throw new Error("参考图无法转换为可发送的图片数据，请重新上传图片");
-            }
             const response = await requestImageQuestion(
                 requestConfig,
-                buildReverseVisionMessages(buildReversePromptRoutePlansRequest(reverseWorkflow.analysis, buildImagePromptReversePreset(reverseWorkflow.mode)), imageDataUrl),
+                [{ role: "user", content: buildReversePromptRoutePlansRequest(reverseWorkflow.analysis, buildImagePromptReversePreset(reverseWorkflow.mode)) }],
                 () => {},
-                { temperature: 0.85, topP: 0.95, maxTokens: 6500 },
+                { temperature: 0.85, topP: 0.95, maxTokens: 6500, stream: false },
             );
             const plans = splitReverseRoutePlans(response);
             if (!plans || plans.length !== 5) throw new Error(`模型返回了内容，但没有解析到五套完整设计方案。原始返回前 300 字：${response.slice(0, 300)}`);
@@ -2158,18 +2151,11 @@ function CanvasWorkspacePage() {
         }
         setReverseWorkflow((current) => (current ? { ...current, loading: true, prompts: [], error: undefined } : current));
         try {
-            const imageDataUrl = await imageToDataUrl({
-                dataUrl: reverseWorkflow.node.metadata.content,
-                storageKey: reverseWorkflow.node.metadata.storageKey,
-            });
-            if (!imageDataUrl || !imageDataUrl.startsWith("data:image/")) {
-                throw new Error("参考图无法转换为可发送的图片数据，请重新上传图片");
-            }
             const generated = await requestImageQuestion(
                 requestConfig,
-                buildReverseVisionMessages(buildReversePromptFinalBatchRequest(reverseWorkflow.analysis, reverseWorkflow.plans, buildImagePromptReversePreset(reverseWorkflow.mode)), imageDataUrl),
+                [{ role: "user", content: buildReversePromptFinalBatchRequest(reverseWorkflow.analysis, reverseWorkflow.plans, buildImagePromptReversePreset(reverseWorkflow.mode)) }],
                 () => {},
-                { temperature: 0.9, topP: 0.95, maxTokens: 5200 },
+                { temperature: 0.9, topP: 0.95, maxTokens: 5200, stream: false },
             );
             const split = splitReversePromptOutput(generated);
             if (!split || split.prompts.length !== 5) {

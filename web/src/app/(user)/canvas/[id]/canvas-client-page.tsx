@@ -204,7 +204,7 @@ function buildImagePromptReversePreset(mode: ReversePromptMode) {
     const modeRule =
         mode === "main"
             ? `本次反推用途：主图。
-只固定白色或接近白色背景，以及用户产品本身不能被改造。其他构图、层次、文字组织和视觉元素都必须依据当前参考图判断。`
+目标是生成符合 Amazon 主图要求的纯白底商品摄影图。参考图中位于商品外部的文字、信息卡、徽章、图标、轨道、蓝图、装饰线、色块和场景元素只能被识别为“不迁移”，不能进入主图方案。`
             : `本次反推用途：副图。
 允许迁移参考图真实可见的场景、氛围、信息表达和商业视觉关系，但不能复制参考产品内容。`;
 
@@ -384,7 +384,8 @@ function sanitizeReversePromptOutput(content: string) {
 
 function buildReversePromptAnalysisOnlyRequest(prompt: string) {
     const modeRule = prompt.includes("本次反推用途：主图")
-        ? "本次用途是主图反推：白色背景是共同底线，但仍要完整识别参考图中真实存在的产品关系、包装层次、版式、文字区域、图形、材质和视觉动线。不要把参考图的品牌和原文案带入新产品。"
+        ? `本次用途是 Amazon 主图反推。分析目标不是迁移参考图的平面设计，而是识别其中可用于合规商品摄影的事实：实际售卖单元、包装组成、正面/侧面/顶部可见关系、机位、透视、占画比例、间距、遮挡、接地阴影、材质和灯光。
+参考图中商品外部的标题、卖点、信息卡、徽章、图标、装饰线、轨道、蓝图、色块、边框、道具和场景背景都必须列入“不迁移”。`
         : "本次用途是副图反推：请完整识别参考图中真实存在的主体关系、氛围、场景、卖点表达、背景关系、信息组织、视觉动线和商业风格。";
 
     return `请基于参考图片做一次“商业视觉拆解分析”，输出必须是中文。
@@ -420,9 +421,44 @@ function buildReverseVisionMessages(prompt: string, imageDataUrl: string): AiTex
 
 function buildReversePromptRoutePlansRequest(analysis: string, sourcePrompt: string) {
     const compactAnalysis = compactReverseAnalysis(analysis, 5200);
-    const modeRule = sourcePrompt.includes("本次反推用途：主图")
-        ? "本次用途是主图：五条路线都必须适合白色或接近纯白背景，但白底只是共同底线，不是路线差异。"
-        : "本次用途是副图：可以迁移参考图中真实存在的环境、氛围、信息表达和视觉动线，也可以在同一商业视觉语法下提出合理的新表达。";
+    const isMain = sourcePrompt.includes("本次反推用途：主图");
+    if (isMain) {
+        return `你是一名熟悉 Amazon 商品图片规范的产品摄影总监。请重新查看原参考图，并结合第一步分析，为同一件用户新产品规划 5 套真实、可执行、彼此可辨认的 Amazon 白底主图拍摄方案。
+
+主图合规底线：
+1. 背景必须是纯白 RGB 255,255,255，只展示实际售卖商品，商品完整清晰并占画面约 85%-95%。
+2. 商品外部不得出现任何文字、Logo、卖点、信息卡、徽章、图标、色块、边框、水印、轨道、蓝图、装饰线、道具或场景。
+3. 只能保留商品包装上真实存在且可读的印刷文字和品牌，不复制参考商品内容，不虚构新产品信息。
+4. 不得添加、移除、打开、拆分或替换包装、配件和内容物。后续连接的新产品图显示什么售卖单元，就只拍什么。
+5. 参考图里不合规的平面设计只能用于理解商品本体，不得迁移到方案中。
+
+五套方案的差异只能来自真实摄影决策：机位与透视、主要可见面、商品朝向、实际售卖单元之间的物理陈列、遮挡与间距、画面占比、接地关系、以及用于呈现材质的灯光。不得为了让方案不同而发明新的图形、文案、包装结构、内物或卖点。
+
+先在内部检查五套方案：
+- 每套必须描述一个确定的成片，不写备选项。
+- 任意两套至少在“主要可见面、机位透视、实际售卖单元关系、画面占比/接地方式”中有一项明显不同。
+- 差异必须适合当前参考图所示的商品形态；不能只换形容词，也不能做成副图或详情页。
+- 如果商品形态不支持大幅变化，应如实生成五种克制的摄影构图，不得用违规视觉元素强行拉开差异。
+
+只输出一个可被 JSON.parse 直接解析的合法 JSON 对象，不要 Markdown、代码块、开场白或总结。根对象只能包含 plans，plans 必须正好 5 项。每项只能包含字符串键：
+title、creativeThesis、visibleMechanism、referenceEvidence、targetFrame、productRole、textStrategy、visualFingerprint、nonOverlap。
+
+字段要求：
+- title：一句能看出拍摄差异的短标题。
+- creativeThesis：说明这套主图依靠什么摄影判断成立。
+- visibleMechanism：写清机位、可见面、朝向、陈列、占比和接地关系。
+- referenceEvidence：引用原图中两到三项真实商品或摄影证据。
+- targetFrame：描述最终纯白底主图，不得包含任何额外设计元素。
+- productRole：说明用户新产品作为实际售卖商品如何被完整呈现。
+- textStrategy：固定写“仅保留用户商品包装上真实存在的印刷文字，不在商品外添加文字”。
+- visualFingerprint：用一句话概括这套方案最容易辨认的摄影特征。
+- nonOverlap：指出它不能退回哪一种与其他方案相同的机位或陈列。
+
+原参考图和视觉拆解分析（原图优先）：
+${compactAnalysis}`;
+    }
+
+    const modeRule = "本次用途是副图：可以迁移参考图中真实存在的环境、氛围、信息表达和视觉动线，也可以在同一商业视觉语法下提出合理的新表达。";
 
     return `你是一名商业视觉创意总监。你正在把一张参考商业图片拆成五条可以真正产生不同成片的设计路线。本次请求同时附带第一步视觉拆解分析和原参考图；必须重新查看原图，不能只依据文字分析。
 
@@ -475,9 +511,30 @@ function buildReversePromptFinalBatchRequest(analysis: string, routePlans: Rever
     const compactRoutes = routePlans
         .map((plan) => `【设计方案${plan.index}｜${plan.title}】\n${plan.content}`)
         .join("\n\n");
-    const modeRule = sourcePrompt.includes("本次反推用途：主图")
-        ? "这是主图任务：五条都使用白色或接近纯白背景，以用户上传的新产品为唯一产品主体，不添加人物、生活场景或参考产品。白底和产品真实性只是共同底线，不能成为五条提示词的主要内容。"
-        : "这是副图任务：根据参考图中真实可见的场景、氛围、信息表达和构图机制生成不同画面，不把参考产品本身带入新图。";
+    const isMain = sourcePrompt.includes("本次反推用途：主图");
+    if (isMain) {
+        return `请再次查看原参考图片，在同一次回答中把下面 5 套摄影方案改写成 5 条可直接交给图片生成模型执行的 Amazon 主图中文提示词。
+
+每条都必须满足：
+- 纯白背景 RGB 255,255,255，只展示用户上传的新产品图中真实可见的实际售卖商品，完整清晰，占画面约 85%-95%。
+- 保留商品真实外观、品牌、包装结构、颜色、材质、标签位置、比例和包装上确实可读的印刷文字。
+- 不添加或删除商品、包装、配件、内物；不打开包装；不复制参考商品内容；不虚构文字、规格、功效或售卖组件。
+- 商品外部不出现任何文字、Logo、卖点、信息卡、徽章、图标、轨道、蓝图、装饰线、色块、边框、水印、道具、人物或生活场景。
+- 使用真实商品摄影语言，边缘清晰、颜色准确、光线自然、接地阴影克制，不做插画或信息设计。
+
+五条之间只执行方案规定的摄影差异。不要为了制造差异添加设计元素，也不要把五条写成冗长分析。每条 160-280 个中文字，以“生成一张符合 Amazon 要求的纯白底商品主图”开头，明确机位、主要可见面、商品朝向、实际售卖单元陈列、占画比例、灯光和阴影。
+
+按以下标记输出，除五个标记和正文外不要输出其他内容：
+【可连线提示词1｜标题】至【可连线提示词5｜标题】
+
+第一步分析：
+${compactAnalysis}
+
+五套合规摄影方案：
+${compactRoutes}`;
+    }
+
+    const modeRule = "这是副图任务：根据参考图中真实可见的场景、氛围、信息表达和构图机制生成不同画面，不把参考产品本身带入新图。";
 
     return `请再次查看本次请求中附带的原参考图片，并在同一次回答中为下面五套设计方案分别写出五条可直接交给图片生成模型执行的中文提示词。原图是事实依据，文字分析只是辅助。${modeRule}
 
@@ -2149,7 +2206,7 @@ function CanvasWorkspacePage() {
                 title: "选择反推用途",
                 content: (
                     <div className="space-y-2 text-sm leading-relaxed">
-                        <p>主图：生成 5 个白底主图方案，产品背景固定白色，不加场景和复杂装饰。</p>
+                        <p>主图：生成 5 个符合 Amazon 规则的纯白底拍摄方案。差异来自机位、可见面、真实售卖组合、占比和灯光，不添加任何外部文字或图形。</p>
                         <p>副图：根据参考图本身独立发散，生成 5 个差异明显的商业视觉方案，不套用固定方向。</p>
                     </div>
                 ),
@@ -3581,9 +3638,9 @@ function CanvasWorkspacePage() {
                         <div className="flex max-h-[76vh] flex-col gap-4 overflow-hidden">
                             <div className="flex flex-wrap items-center gap-2 text-sm">
                                 <span className="rounded-full bg-black px-3 py-1 text-white">1 分析参考图</span>
-                                <span className={reverseWorkflow.stage !== "analysis" ? "rounded-full bg-black px-3 py-1 text-white" : "rounded-full bg-neutral-100 px-3 py-1 text-neutral-500"}>2 生成五套设计方案</span>
+                                <span className={reverseWorkflow.stage !== "analysis" ? "rounded-full bg-black px-3 py-1 text-white" : "rounded-full bg-neutral-100 px-3 py-1 text-neutral-500"}>2 生成五套{reverseWorkflow.mode === "main" ? "拍摄" : "设计"}方案</span>
                                 <span className={reverseWorkflow.prompts.length === 5 ? "rounded-full bg-black px-3 py-1 text-white" : "rounded-full bg-neutral-100 px-3 py-1 text-neutral-500"}>3 生成完整提示词</span>
-                                <span className="ml-auto text-neutral-500">{reverseWorkflow.mode === "main" ? "主图模式：白色背景共同底线" : "副图模式：根据参考图动态发散"}</span>
+                                <span className="ml-auto text-neutral-500">{reverseWorkflow.mode === "main" ? "Amazon 主图：纯白底合规摄影" : "副图模式：根据参考图动态发散"}</span>
                             </div>
 
                             {reverseWorkflow.error ? <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{reverseWorkflow.error}</div> : null}
@@ -3608,7 +3665,9 @@ function CanvasWorkspacePage() {
                                             <Input.TextArea value={reverseWorkflow.analysis} readOnly autoSize={{ minRows: 10, maxRows: 18 }} />
                                         </div>
                                         <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4 text-sm leading-7 text-neutral-600">
-                                            下一步会先生成五套设计方案。每套方案必须有独立的核心变化机制，不能只改变产品左右位置、上下层级或背景颜色。
+                                            {reverseWorkflow.mode === "main"
+                                                ? "下一步只生成 Amazon 合规的白底拍摄方案。不会添加信息卡、徽章、轨道、蓝图、外部文字或不存在的商品内容；五套差异来自真实摄影与陈列决策。"
+                                                : "下一步会先生成五套设计方案。每套方案必须有独立的核心变化机制，不能只改变产品左右位置、上下层级或背景颜色。"}
                                         </div>
                                         {reverseWorkflow.plans.length ? (
                                             <div className="grid gap-3 md:grid-cols-2">
@@ -3622,7 +3681,7 @@ function CanvasWorkspacePage() {
                                         ) : null}
                                         <div className="flex gap-2">
                                             <Button loading={reverseWorkflow.loading} onClick={() => void runReverseWorkflowPlans()}>
-                                                {reverseWorkflow.plans.length ? "重新生成五套方案" : "生成五套设计方案"}
+                                                {reverseWorkflow.plans.length ? "重新生成五套方案" : `生成五套${reverseWorkflow.mode === "main" ? "拍摄" : "设计"}方案`}
                                             </Button>
                                             {reverseWorkflow.plans.length === 5 ? <Button type="primary" onClick={() => { setReverseWorkflow((current) => (current ? { ...current, stage: "prompts" } : current)); void runReverseWorkflowPrompts(); }}>确认方案并生成提示词</Button> : null}
                                         </div>

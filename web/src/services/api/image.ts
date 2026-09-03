@@ -477,7 +477,7 @@ async function buildLabelStructureReference(reference: ReferenceImage): Promise<
     if (!coarseContext) return reference;
     coarseContext.fillStyle = "#ffffff";
     coarseContext.fillRect(0, 0, coarseWidth, coarseHeight);
-    coarseContext.filter = "grayscale(1) brightness(1.18) contrast(0.58)";
+    coarseContext.filter = "grayscale(1) brightness(1.05) contrast(0.8)";
     coarseContext.drawImage(source, 0, 0, coarseWidth, coarseHeight);
 
     const canvas = document.createElement("canvas");
@@ -493,8 +493,13 @@ async function buildLabelStructureReference(reference: ReferenceImage): Promise<
     const blurPad = Math.max(8, Math.round(Math.max(width, height) * 0.02));
     context.drawImage(coarseCanvas, -blurPad, -blurPad, width + blurPad * 2, height + blurPad * 2);
     context.filter = "none";
-    context.fillStyle = "rgba(255, 255, 255, 0.34)";
+    context.fillStyle = "rgba(255, 255, 255, 0.15)";
     context.fillRect(0, 0, width, height);
+    const printInsetX = Math.round(width * 0.055);
+    const printInsetTop = Math.round(height * 0.07);
+    const printInsetBottom = Math.round(height * 0.1);
+    context.fillStyle = "#ffffff";
+    context.fillRect(printInsetX, printInsetTop, width - printInsetX * 2, height - printInsetTop - printInsetBottom);
 
     return {
         ...reference,

@@ -22,6 +22,8 @@ type RequestPayloadInfo = {
     model: string;
     hasImageInput: boolean;
     imageInputCount: number;
+    imageReferencePreparation?: string;
+    inputFidelity?: string;
     jsonBody?: Record<string, unknown>;
 };
 
@@ -140,8 +142,18 @@ async function requestPayloadInfo(request: NextRequest): Promise<RequestPayloadI
             return { model: typeof payload.model === "string" ? payload.model : "", hasImageInput: isImageInputValue(payload), imageInputCount: countImageInputs(payload), jsonBody: payload };
         }
         if (contentType.includes("multipart/form-data")) {
-            const model = (await request.clone().formData()).get("model");
-            return { model: typeof model === "string" ? model : "", hasImageInput: false, imageInputCount: 0 };
+            const formData = await request.clone().formData();
+            const model = formData.get("model");
+            const images = formData.getAll("image");
+            const structureOnly = images.some((image) => typeof image !== "string" && image.name.startsWith("structure-only-"));
+            const inputFidelity = formData.get("input_fidelity");
+            return {
+                model: typeof model === "string" ? model : "",
+                hasImageInput: false,
+                imageInputCount: images.length,
+                imageReferencePreparation: structureOnly ? "structure-only" : "original",
+                inputFidelity: typeof inputFidelity === "string" ? inputFidelity : undefined,
+            };
         }
     } catch {
         return { model: "", hasImageInput: false, imageInputCount: 0 };
@@ -236,6 +248,8 @@ async function proxyOpenAI(request: NextRequest, context: RouteContext) {
             route: target.kind,
             hasImageInput: payloadInfo.hasImageInput,
             imageInputCount: payloadInfo.imageInputCount,
+            imageReferencePreparation: payloadInfo.imageReferencePreparation,
+            inputFidelity: payloadInfo.inputFidelity,
             visionModel: payloadInfo.hasImageInput ? visionModel() : undefined,
             referenceMode: request.headers.get("x-eons-reference-mode") || undefined,
         });

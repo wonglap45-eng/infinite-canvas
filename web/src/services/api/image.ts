@@ -136,6 +136,8 @@ const IMAGE_MAX_PIXELS = 8294400;
 const IMAGE_MAX_EDGE = 3840;
 const IMAGE_MAX_RATIO = 3;
 const IMAGE_OUTPUT_FORMAT = "png";
+const LABEL_STRUCTURE_GUIDE_LONG_SIDE = 56;
+const LABEL_STRUCTURE_GUIDE_MAX_OUTPUT_SIDE = 1536;
 
 function isUrlImageModel(model: string) {
     const value = model.trim().toLowerCase();
@@ -454,6 +456,58 @@ function loadImageElement(dataUrl: string) {
         image.onerror = () => reject(new Error("读取参考图失败"));
         image.src = dataUrl;
     });
+}
+
+async function buildLabelStructureReference(reference: ReferenceImage): Promise<ReferenceImage> {
+    const source = await loadImageElement(await imageToDataUrl(reference));
+    const sourceWidth = source.naturalWidth || source.width || 1024;
+    const sourceHeight = source.naturalHeight || source.height || 1024;
+    const sourceLongSide = Math.max(sourceWidth, sourceHeight);
+    const guideScale = Math.min(1, LABEL_STRUCTURE_GUIDE_MAX_OUTPUT_SIDE / sourceLongSide);
+    const width = Math.max(1, Math.round(sourceWidth * guideScale));
+    const height = Math.max(1, Math.round(sourceHeight * guideScale));
+    const coarseScale = LABEL_STRUCTURE_GUIDE_LONG_SIDE / Math.max(width, height);
+    const coarseWidth = Math.max(8, Math.round(width * coarseScale));
+    const coarseHeight = Math.max(8, Math.round(height * coarseScale));
+
+    const coarseCanvas = document.createElement("canvas");
+    coarseCanvas.width = coarseWidth;
+    coarseCanvas.height = coarseHeight;
+    const coarseContext = coarseCanvas.getContext("2d");
+    if (!coarseContext) return reference;
+    coarseContext.fillStyle = "#ffffff";
+    coarseContext.fillRect(0, 0, coarseWidth, coarseHeight);
+    coarseContext.filter = "grayscale(1) brightness(1.18) contrast(0.58)";
+    coarseContext.drawImage(source, 0, 0, coarseWidth, coarseHeight);
+
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d");
+    if (!context) return reference;
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, width, height);
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = "high";
+    context.filter = `blur(${Math.max(4, Math.round(Math.max(width, height) * 0.008))}px)`;
+    const blurPad = Math.max(8, Math.round(Math.max(width, height) * 0.02));
+    context.drawImage(coarseCanvas, -blurPad, -blurPad, width + blurPad * 2, height + blurPad * 2);
+    context.filter = "none";
+    context.fillStyle = "rgba(255, 255, 255, 0.34)";
+    context.fillRect(0, 0, width, height);
+
+    return {
+        ...reference,
+        name: `structure-only-${reference.name || "reference.png"}`,
+        type: "image/png",
+        dataUrl: canvas.toDataURL("image/png"),
+        storageKey: undefined,
+    };
+}
+
+async function prepareEditReferences(references: ReferenceImage[], mode?: ImageReferenceMode, hasMask = false) {
+    if (mode !== "redesign-label" || hasMask) return references;
+    return Promise.all(references.map((reference) => buildLabelStructureReference(reference)));
 }
 
 async function buildMaskedSourceReference(source: ReferenceImage, mask: ReferenceImage): Promise<ReferenceImage | null> {
@@ -1086,9 +1140,10 @@ export async function requestGeneration(config: AiConfig, prompt: string, option
 export async function requestEdit(config: AiConfig, prompt: string, references: ReferenceImage[], mask?: ReferenceImage, options?: RequestOptions) {
     const requestConfig = resolveModelRequestConfig(config, config.model || config.imageModel);
     const n = Math.max(1, Math.min(3, Math.floor(Math.abs(Number(config.count)) || 1)));
-    const requestPrompt = buildImageReferencePromptText(prompt, references, options?.referenceMode);
+    const requestReferences = await prepareEditReferences(references, options?.referenceMode, Boolean(mask));
+    const requestPrompt = buildImageReferencePromptText(prompt, requestReferences, options?.referenceMode);
     const maskReferencePrompt = mask ? buildMaskReferencePrompt(requestPrompt, references.length) : requestPrompt;
-    const referencesWithMask = mask ? [...references, mask] : references;
+    const referencesWithMask = mask ? [...requestReferences, mask] : requestReferences;
     const quality = normalizeQuality(config.quality);
     const requestSize = resolveRequestSize(quality, config.size);
     if (requestConfig.apiFormat === "gemini") {
@@ -1102,7 +1157,7 @@ export async function requestEdit(config: AiConfig, prompt: string, references: 
     if (usesUrlResponse) {
         let multipartError: unknown;
         try {
-            const images = parseImagePayload(await postAsyncImageForm(requestConfig, "/images/edits", await buildImageEditFormData(requestConfig, requestPrompt, references, mask, quality, requestSize, 1, options?.referenceMode), options));
+            const images = parseImagePayload(await postAsyncImageForm(requestConfig, "/images/edits", await buildImageEditFormData(requestConfig, requestPrompt, requestReferences, mask, quality, requestSize, 1, options?.referenceMode), options));
             return await normalizeGeneratedImagesToSize(images, requestSize);
         } catch (error) {
             multipartError = error;
@@ -1111,14 +1166,14 @@ export async function requestEdit(config: AiConfig, prompt: string, references: 
             }
         }
         try {
-            return await normalizeGeneratedImagesToSize(await requestUrlImageEdit(requestConfig, maskReferencePrompt, references, mask, requestSize, options), requestSize);
+            return await normalizeGeneratedImagesToSize(await requestUrlImageEdit(requestConfig, maskReferencePrompt, requestReferences, mask, requestSize, options), requestSize);
         } catch (error) {
             if (multipartError && !isRecoverableImageParameterError(error)) throw new Error(readAxiosError(error, "请求失败"));
             throw new Error(readAxiosError(error, "请求失败"));
         }
     }
 
-    const formData = await buildImageEditFormData(requestConfig, requestPrompt, references, mask, quality, requestSize, n, options?.referenceMode);
+    const formData = await buildImageEditFormData(requestConfig, requestPrompt, requestReferences, mask, quality, requestSize, n, options?.referenceMode);
 
     try {
         const response = await axios.post<ImageApiResponse>(aiApiUrl(requestConfig, "/images/edits"), formData, {

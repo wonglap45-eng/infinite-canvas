@@ -27,37 +27,45 @@ export type NodeGenerationInput = {
     video?: ReferenceVideo;
     audio?: ReferenceAudio;
     imageReferenceMode?: ImageReferenceMode;
+    visualReferenceNodeId?: string;
 };
 
 export function buildNodeGenerationContext(nodeId: string, nodes: CanvasNodeData[], connections: CanvasConnection[], prompt: string): NodeGenerationContext {
     const inputs = buildNodeGenerationInputs(nodeId, nodes, connections);
     const sourceNode = nodes.find((node) => node.id === nodeId);
+    const sourceVisualReferenceNodeId = sourceNode ? inferVisualReferenceNodeId(sourceNode, nodes, connections) : undefined;
+    const sourceImageReferenceMode = sourceNode ? inferImageReferenceMode(sourceNode, sourceVisualReferenceNodeId) : undefined;
+    const imageReferenceMode = sourceImageReferenceMode || inputs.find((input) => input.imageReferenceMode)?.imageReferenceMode;
+    const visualReferenceNodeIds = new Set(
+        [sourceVisualReferenceNodeId, ...inputs.map((input) => input.visualReferenceNodeId)].filter((id): id is string => Boolean(id)),
+    );
+    const generationInputs = imageReferenceMode === "secondary-product" ? inputs.filter((input) => input.type !== "image" || !visualReferenceNodeIds.has(input.nodeId)) : inputs;
     if (sourceNode?.type === CanvasNodeType.Config && Boolean(sourceNode.metadata?.composerContent?.trim())) {
-        return buildComposerGenerationContext(inputs, prompt);
+        return buildComposerGenerationContext(generationInputs, prompt, imageReferenceMode);
     }
 
-    const upstreamText = inputs
+    const upstreamText = generationInputs
         .map((input) => input.text)
         .filter(Boolean)
         .join("\n\n");
-    const referenceImages = inputs.map((input) => input.image).filter((image): image is ReferenceImage => Boolean(image));
-    const referenceVideos = inputs.map((input) => input.video).filter((video): video is ReferenceVideo => Boolean(video));
-    const referenceAudios = inputs.map((input) => input.audio).filter((audio): audio is ReferenceAudio => Boolean(audio));
+    const referenceImages = generationInputs.map((input) => input.image).filter((image): image is ReferenceImage => Boolean(image));
+    const referenceVideos = generationInputs.map((input) => input.video).filter((video): video is ReferenceVideo => Boolean(video));
+    const referenceAudios = generationInputs.map((input) => input.audio).filter((audio): audio is ReferenceAudio => Boolean(audio));
 
     return {
         prompt: upstreamText ? `${prompt}\n\n${upstreamText}` : prompt,
         referenceImages,
         referenceVideos,
         referenceAudios,
-        textCount: inputs.filter((input) => input.type === "text").length,
+        textCount: generationInputs.filter((input) => input.type === "text").length,
         imageCount: referenceImages.length,
         videoCount: referenceVideos.length,
         audioCount: referenceAudios.length,
-        imageReferenceMode: inputs.find((input) => input.imageReferenceMode)?.imageReferenceMode,
+        imageReferenceMode,
     };
 }
 
-function buildComposerGenerationContext(inputs: NodeGenerationInput[], prompt: string): NodeGenerationContext {
+function buildComposerGenerationContext(inputs: NodeGenerationInput[], prompt: string, imageReferenceMode?: ImageReferenceMode): NodeGenerationContext {
     const inputByNodeId = new Map(inputs.map((input) => [input.nodeId, input]));
     const selectedInputs: NodeGenerationInput[] = [];
     const labelByNodeId = new Map<string, string>();
@@ -114,7 +122,7 @@ function buildComposerGenerationContext(inputs: NodeGenerationInput[], prompt: s
         imageCount: referenceImages.length,
         videoCount: referenceVideos.length,
         audioCount: referenceAudios.length,
-        imageReferenceMode: inputs.find((input) => input.imageReferenceMode)?.imageReferenceMode,
+        imageReferenceMode: imageReferenceMode || inputs.find((input) => input.imageReferenceMode)?.imageReferenceMode,
     };
 }
 
@@ -127,16 +135,19 @@ export function buildNodeGenerationInputs(nodeId: string, nodes: CanvasNodeData[
         const audio = readReferenceAudio(node);
         if (audio) return [{ nodeId: node.id, type: "audio" as const, title: node.title, audio }];
         const text = readNodeTextInput(node);
-        if (text)
+        if (text) {
+            const visualReferenceNodeId = inferVisualReferenceNodeId(node, nodes, connections);
             return [
                 {
                     nodeId: node.id,
                     type: "text" as const,
                     title: node.title,
                     text,
-                    imageReferenceMode: node.metadata?.imageReferenceMode || (text.includes("所有变化仅限包装印刷区") ? "redesign-label" : undefined),
+                    imageReferenceMode: inferImageReferenceMode(node, visualReferenceNodeId),
+                    visualReferenceNodeId,
                 },
             ];
+        }
         return [];
     });
 }
@@ -168,6 +179,24 @@ export async function hydrateNodeGenerationContext(context: NodeGenerationContex
 function readNodeTextInput(node: CanvasNodeData) {
     if (node.type === CanvasNodeType.Text) return node.metadata?.content || node.metadata?.prompt || "";
     return node.metadata?.prompt || "";
+}
+
+function inferVisualReferenceNodeId(node: CanvasNodeData, nodes: CanvasNodeData[], connections: CanvasConnection[]) {
+    if (node.metadata?.visualReferenceNodeId) return node.metadata.visualReferenceNodeId;
+    const text = readNodeTextInput(node);
+    if (node.type !== CanvasNodeType.Text || !/唯一产品主体|唯一商品主体/.test(text)) return undefined;
+    return connections
+        .filter((connection) => connection.toNodeId === node.id)
+        .map((connection) => nodes.find((item) => item.id === connection.fromNodeId))
+        .find((item) => item?.type === CanvasNodeType.Image && item.metadata?.content)?.id;
+}
+
+function inferImageReferenceMode(node: CanvasNodeData, visualReferenceNodeId?: string): ImageReferenceMode | undefined {
+    const storedMode = node.metadata?.imageReferenceMode;
+    if (storedMode === "redesign-label" || storedMode === "secondary-product") return storedMode;
+    const text = readNodeTextInput(node);
+    if (visualReferenceNodeId && /唯一产品主体|唯一商品主体/.test(text)) return "secondary-product";
+    return storedMode || (text.includes("所有变化仅限包装印刷区") ? "redesign-label" : undefined);
 }
 
 function generationLabel(type: NodeGenerationInput["type"], index: number) {

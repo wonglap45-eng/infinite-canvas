@@ -55,6 +55,7 @@ export type CanvasNodeMetadata = {
     primaryImageId?: string;
     imageBatchExpanded?: boolean;
     imageReferenceMode?: ImageReferenceMode;
+    visualReferenceNodeId?: string;
     storageKey?: string;
     mimeType?: string;
     bytes?: number;

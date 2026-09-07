@@ -573,7 +573,7 @@ async function requestUrlImageEdit(config: AiConfig, prompt: string, references:
         prompt: withSystemPrompt(config, prompt),
         n: 1,
         ...(requestSize ? { size: requestSize } : {}),
-        ...(options?.referenceMode === "redesign-label" ? { input_fidelity: "low" as const } : {}),
+        ...(options?.referenceMode === "redesign-label" ? { input_fidelity: "low" as const } : options?.referenceMode === "secondary-product" ? { input_fidelity: "high" as const } : {}),
         input_references: await toOpenRouterImageReferences(fullReferences),
     };
 
@@ -1202,6 +1202,7 @@ async function buildImageEditFormData(config: AiConfig, prompt: string, referenc
     if (quality) formData.set("quality", quality);
     if (requestSize) formData.set("size", requestSize);
     if (referenceMode === "redesign-label") formData.set("input_fidelity", "low");
+    if (referenceMode === "secondary-product") formData.set("input_fidelity", "high");
     const files = await Promise.all(references.map(async (image) => dataUrlToFile({ ...image, dataUrl: await imageToDataUrl(image) })));
     files.forEach((file) => formData.append("image", file));
     if (mask) formData.set("mask", dataUrlToFile(mask));

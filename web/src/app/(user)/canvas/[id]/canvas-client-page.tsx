@@ -553,7 +553,7 @@ ${compactAnalysis}
 ${compactRoutes}`;
     }
 
-    const modeRule = "这是副图任务：根据参考图中真实可见的场景、氛围、信息表达和构图机制生成不同画面，不把参考产品本身带入新图。";
+    const modeRule = "这是副图迁移任务：A 副图只负责提供已经分析出的场景、构图、信息表达和商业视觉机制；最终生图阶段附带的参考图片是 B 产品身份图，B 产品才是唯一商品主体。A 图中的竞品产品绝不能进入新图。";
 
     return `请再次查看本次请求中附带的原参考图片，并在同一次回答中为下面五套设计方案分别写出五条可直接交给图片生成模型执行的中文提示词。原图是事实依据，文字分析只是辅助。${modeRule}
 
@@ -566,11 +566,13 @@ ${compactRoutes}`;
 4. 如果设计方案本身发生碰撞，先根据原图事实重新拉开机制，再写最终提示词。
 
 共同底线只需在每条结尾用一到两句简洁表达，不要让它淹没独有设计：
-- 以用户上传的新产品图为唯一产品主体，保留真实外观、品牌、包装结构、颜色、标签位置、比例和确实可读的文字。
-- 不复制参考产品的品牌、产品名、文案、规格、功效或图形文字，不虚构用户产品不存在的信息。
+- 明确写出“生成阶段附带的参考图片是 B 产品身份图，只锁定产品本身，不锁定 B 图原有背景和构图”。以 B 产品为唯一商品主体，保留其真实外观、品牌、包装结构、颜色、标签位置、比例和确实可读的文字。
+- 根据本方案重建完整副图画面，允许改变 B 产品在画面中的位置、大小、背景、机位关系、场景、光影、道具和外部信息组织，但不得重绘或改版 B 产品包装。
+- A 副图不作为商品素材进入最终画面；不复制 A 图产品的品牌、产品名、包装、文案、规格、功效或图形文字，不虚构 B 产品不存在的信息。
 
 每条提示词要求：
 - 先用主要篇幅写本方案独有的可见设计机制、画面关系、信息组织、材质/图形协作和观看结果，再写共同底线。
+- 外部标题或卖点只能写成从 B 产品图可确认信息中提取的内容槽位，不得提前编造具体产品文案；若 B 图无法确认则该位置留空。
 - 描述一个确定成片，不写“如果、或者、可选择”等备选表达，不输出分析报告、模型、API 或文件名。
 - 每条 300-520 个中文字，以“生成一张...”开头。
 - 五条分别使用【可连线提示词1｜标题】到【可连线提示词5｜标题】标记；标记后直接写提示词正文。
@@ -2133,9 +2135,14 @@ function CanvasWorkspacePage() {
         }
         setReverseWorkflow((current) => (current ? { ...current, loading: true, error: undefined } : current));
         try {
+            const imageDataUrl = await imageToDataUrl({
+                dataUrl: reverseWorkflow.node.metadata?.content || "",
+                storageKey: reverseWorkflow.node.metadata?.storageKey,
+            });
+            if (!imageDataUrl || !imageDataUrl.startsWith("data:image/")) throw new Error("A 参考图无法读取，请重新上传后再生成方案");
             const response = await requestImageQuestion(
                 requestConfig,
-                [{ role: "user", content: buildReversePromptRoutePlansRequest(reverseWorkflow.analysis, buildImagePromptReversePreset(reverseWorkflow.mode)) }],
+                buildReverseVisionMessages(buildReversePromptRoutePlansRequest(reverseWorkflow.analysis, buildImagePromptReversePreset(reverseWorkflow.mode)), imageDataUrl),
                 () => {},
                 { temperature: 0.85, topP: 0.95, maxTokens: 6500, stream: false },
             );
@@ -2158,9 +2165,14 @@ function CanvasWorkspacePage() {
         }
         setReverseWorkflow((current) => (current ? { ...current, loading: true, prompts: [], error: undefined } : current));
         try {
+            const imageDataUrl = await imageToDataUrl({
+                dataUrl: reverseWorkflow.node.metadata?.content || "",
+                storageKey: reverseWorkflow.node.metadata?.storageKey,
+            });
+            if (!imageDataUrl || !imageDataUrl.startsWith("data:image/")) throw new Error("A 参考图无法读取，请重新上传后再生成提示词");
             const generated = await requestImageQuestion(
                 requestConfig,
-                [{ role: "user", content: buildReversePromptFinalBatchRequest(reverseWorkflow.analysis, reverseWorkflow.plans, buildImagePromptReversePreset(reverseWorkflow.mode)) }],
+                buildReverseVisionMessages(buildReversePromptFinalBatchRequest(reverseWorkflow.analysis, reverseWorkflow.plans, buildImagePromptReversePreset(reverseWorkflow.mode)), imageDataUrl),
                 () => {},
                 { temperature: 0.9, topP: 0.95, maxTokens: 5200, stream: false },
             );
@@ -2192,7 +2204,8 @@ function CanvasWorkspacePage() {
                     prompt: content,
                     status: NODE_STATUS_SUCCESS,
                     fontSize: READABLE_TEXT_FONT_SIZE,
-                    imageReferenceMode: reverseWorkflow.mode === "main" ? "redesign-label" : "preserve-product",
+                    imageReferenceMode: reverseWorkflow.mode === "main" ? "redesign-label" : "secondary-product",
+                    visualReferenceNodeId: reverseWorkflow.mode === "secondary" ? source.id : undefined,
                 }),
                 title: `可连线提示词 ${index + 1}｜${plan?.title || "设计方案"}`.slice(0, 48),
             };
@@ -2204,7 +2217,7 @@ function CanvasWorkspacePage() {
         setDialogNodeId(promptNodes[0]?.id || null);
         setReverseWorkflow(null);
         setReverseWorkflowOpen(false);
-        message.success("已创建 5 个独立提示词节点。请将自己的产品图连接到生图配置。");
+        message.success(reverseWorkflow.mode === "secondary" ? "已创建 5 个副图提示词节点。A 图只作创意参考，请将 B 产品图连接到生图配置。" : "已创建 5 个独立提示词节点。请将自己的产品图连接到生图配置。");
     }, [message, reverseWorkflow]);
 
     const chooseImageReversePromptMode = useCallback(
@@ -2218,7 +2231,7 @@ function CanvasWorkspacePage() {
                 content: (
                     <div className="space-y-2 text-sm leading-relaxed">
                         <p>主图：白底、产品结构、构图和光影保持固定，生成 5 套明显不同的包装标签视觉方案；变化只发生在包装可印刷区域。</p>
-                        <p>副图：根据参考图本身独立发散，生成 5 个差异明显的商业视觉方案，不套用固定方向。</p>
+                        <p>副图：当前 A 图只负责分析场景、构图和商业表达，生成 5 个迁移方案；之后只把自己的 B 产品图连接到生图配置，A 图不会作为商品主体发送。</p>
                     </div>
                 ),
                 okText: "主图",
@@ -2725,6 +2738,9 @@ function CanvasWorkspacePage() {
                             ? [{ id: sourceNode.id, name: `${sourceNode.title || sourceNode.id}.png`, type: sourceNode.metadata.mimeType || "image/png", dataUrl: sourceNode.metadata.content, storageKey: sourceNode.metadata.storageKey }]
                             : [];
                     const referenceImages = sourceReference.length ? sourceReference : generationContext.referenceImages;
+                    if (generationContext.imageReferenceMode === "secondary-product" && !referenceImages.length) {
+                        throw new Error("副图生成缺少 B 产品图。请把自己的产品图片连接到生图配置；A 副图只用于反推视觉方案，不会作为商品主体发送。");
+                    }
                     const generationType = referenceImages.length ? ("edit" as const) : ("generation" as const);
                     const generationMetadata = buildImageGenerationMetadata(generationType, generationConfig, count, referenceImages, generationContext.imageReferenceMode);
                     const parentConfig = NODE_DEFAULT_SIZE[isConfigNode ? CanvasNodeType.Config : isImageNode ? CanvasNodeType.Image : CanvasNodeType.Text];
@@ -3667,7 +3683,7 @@ function CanvasWorkspacePage() {
                                 <span className="rounded-full bg-black px-3 py-1 text-white">1 分析参考图</span>
                                 <span className={reverseWorkflow.stage !== "analysis" ? "rounded-full bg-black px-3 py-1 text-white" : "rounded-full bg-neutral-100 px-3 py-1 text-neutral-500"}>2 生成五套{reverseWorkflow.mode === "main" ? "标签" : "设计"}方案</span>
                                 <span className={reverseWorkflow.prompts.length === 5 ? "rounded-full bg-black px-3 py-1 text-white" : "rounded-full bg-neutral-100 px-3 py-1 text-neutral-500"}>3 生成完整提示词</span>
-                                <span className="ml-auto text-neutral-500">{reverseWorkflow.mode === "main" ? "Amazon 主图：固定画面，重做包装标签" : "副图模式：根据参考图动态发散"}</span>
+                                <span className="ml-auto text-neutral-500">{reverseWorkflow.mode === "main" ? "Amazon 主图：固定画面，重做包装标签" : "副图迁移：A 提供方法，B 是唯一产品"}</span>
                             </div>
 
                             {reverseWorkflow.error ? <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{reverseWorkflow.error}</div> : null}
@@ -3694,7 +3710,7 @@ function CanvasWorkspacePage() {
                                         <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4 text-sm leading-7 text-neutral-600">
                                             {reverseWorkflow.mode === "main"
                                                 ? "下一步生成五套包装标签方案。白底、产品物理结构、机位、构图和光影全部固定；五套差异只来自包装印刷区内的核心图形、信息层级、版式节奏、色彩关系和工艺表现。"
-                                                : "下一步会先生成五套设计方案。每套方案必须有独立的核心变化机制，不能只改变产品左右位置、上下层级或背景颜色。"}
+                                                : "下一步会从 A 副图生成五套可迁移方案。每套必须有独立的视觉机制；最终生成时只读取 B 产品身份图，A 图的竞品主体不会进入新图。"}
                                         </div>
                                         {reverseWorkflow.plans.length ? (
                                             <div className="grid gap-3 md:grid-cols-2">

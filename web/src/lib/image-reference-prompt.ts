@@ -6,8 +6,10 @@ export function imageReferenceLabel(index: number) {
     return `图片${index + 1}`;
 }
 
+const SECONDARY_ENGLISH_COPY_RULE = `画面文字语言硬性要求：本提示词中的中文只用于描述设计，不是需要渲染到图片里的文案。商品包装外新增的标题、卖点、图标说明和短标签必须全部使用自然、简洁的英文，禁止出现任何中文、拼音或中英混排。新增英文优先复用唯一附加产品身份参考图中确实可读的英文信息；提示词明确给出的中文功能概念只有在产品标签可读信息支持相同含义时才可转写为英文。不得照搬视觉参考的文案，无法由产品图确认的卖点应省略文字并仅保留图形，不得猜测或虚构功效。`;
+
 export function normalizeSecondaryGenerationPrompt(prompt: string) {
-    return prompt
+    const normalized = prompt
         .trim()
         .replace(/B\s*产品身份图/gi, "唯一附加的产品身份参考图")
         .replace(/B\s*产品(?:参考)?图/gi, "唯一附加的产品身份参考图")
@@ -16,6 +18,7 @@ export function normalizeSecondaryGenerationPrompt(prompt: string) {
         .replace(/A\s*副图/gi, "前序视觉参考")
         .replace(/A\s*产品(?:参考)?图/gi, "前序视觉参考")
         .replace(/A\s*图/gi, "前序视觉参考");
+    return normalized.includes("画面文字语言硬性要求：") ? normalized : `${normalized}\n\n${SECONDARY_ENGLISH_COPY_RULE}`;
 }
 
 export function buildImageReferencePromptText(prompt: string, references: ReferenceImage[], mode: ImageReferenceMode = "preserve-product") {
@@ -35,7 +38,8 @@ export function buildImageReferencePromptText(prompt: string, references: Refere
 2. 产品身份参考图原有的背景、留白、画幅、商品位置、大小、机位和接地阴影不是保留对象。请按照用户提示词重新搭建整张副图的背景、构图、商品位置、视觉动线、信息区域、道具关系、氛围和光影，让同一件真实商品进入提示词规定的新商业画面。
 3. 用户提示词已经包含前序视觉拆解所提炼的场景机制、构图关系、信息组织、材质氛围、装饰元素和观看顺序。只执行这些具体设计要求，不猜测其来源，也不引入任何其他商品、品牌、Logo、产品名、包装文字、卖点、规格或事实信息。
 4. 商品必须保持真实完整，不改包装标签、不重排包装文字、不改颜色、不改变瓶型/袋型/盒型，不生成相似但不同的替代包装。商品外部的标题、卖点和图形只能使用用户明确提供或产品身份参考图中确实可确认的信息；不确定的内容留空，不得虚构。
-5. 最终成片必须明显执行提示词规定的副图表达，而不是把产品身份参考图原位复制后只换一点背景。缩小到缩略图时，应能看出新的场景关系、构图机制或信息表达已经成立，同时仍能一眼确认是同一件真实商品。`
+5. VISIBLE COPY LANGUAGE: ENGLISH ONLY. 本请求中的中文是设计指令，不是画面文案。商品外部新增的标题、卖点、图标说明和短标签全部使用自然、简洁的英文，禁止渲染中文、拼音或中英混排。优先复用产品身份参考图中确实可读的英文；中文功能概念仅在产品标签支持相同含义时才可转写为英文。无法确认的卖点省略文字并只保留图形，不得照搬其他视觉参考或虚构功效。
+6. 最终成片必须明显执行提示词规定的副图表达，而不是把产品身份参考图原位复制后只换一点背景。缩小到缩略图时，应能看出新的场景关系、构图机制或信息表达已经成立，同时仍能一眼确认是同一件真实商品。`
               : `1. 参考图片是用户上传的产品主体，不是可选灵感图。最终生成图必须以参考图片中的产品为唯一产品主体。
 2. 必须保留参考产品的品类、数量、瓶型/盒型/袋型、包装比例、品牌识别、Logo 和图片中能够确认的真实文字事实。
 3. 如果用户提示词明确要求重新设计包装标签或可印刷区域，应保留产品身份与真实事实，但允许并应当改变标签版式、图形、颜色、文字层级和视觉风格；不要把旧标签样式错误地当成不可修改的产品结构。

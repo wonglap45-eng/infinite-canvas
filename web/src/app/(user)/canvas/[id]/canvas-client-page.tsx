@@ -902,7 +902,13 @@ function CanvasWorkspacePage() {
         }
 
         const restore = async () => {
-            const restoredNodes = await hydrateCanvasImages(resetInterruptedGeneration(project.nodes));
+            const restoredNodes = (await hydrateCanvasImages(resetInterruptedGeneration(project.nodes))).map((node) => {
+                if (node.metadata?.imageReferenceMode !== "secondary-product") return node;
+                const content = typeof node.metadata.content === "string" ? normalizeSecondaryGenerationPrompt(node.metadata.content) : node.metadata.content;
+                const prompt = typeof node.metadata.prompt === "string" ? normalizeSecondaryGenerationPrompt(node.metadata.prompt) : node.metadata.prompt;
+                if (content === node.metadata.content && prompt === node.metadata.prompt) return node;
+                return { ...node, metadata: { ...node.metadata, content, prompt } };
+            });
             const restoredSessions = await hydrateAssistantImages(project.chatSessions || []);
             setNodes(restoredNodes);
             setConnections(project.connections);

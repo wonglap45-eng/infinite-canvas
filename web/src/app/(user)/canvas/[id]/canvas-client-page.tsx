@@ -15,6 +15,7 @@ import { resolveMediaUrl, uploadMediaFile, type UploadedFile } from "@/services/
 import { nanoid } from "nanoid";
 import { getDataUrlByteSize, readImageMeta } from "@/lib/image-utils";
 import { imageVariationPrompt } from "@/lib/image-variation-prompt";
+import { normalizeSecondaryGenerationPrompt } from "@/lib/image-reference-prompt";
 import { canvasThemes, type CanvasBackgroundMode } from "@/lib/canvas-theme";
 import { UserStatusActions } from "@/components/layout/user-status-actions";
 import { useAssetStore } from "@/stores/use-asset-store";
@@ -2181,7 +2182,15 @@ function CanvasWorkspacePage() {
             if (!split || split.prompts.length !== 5) {
                 throw new Error(`模型返回了内容，但没有解析到五条完整提示词。原始返回前 300 字：${generated.slice(0, 300)}`);
             }
-            setReverseWorkflow((current) => (current ? { ...current, prompts: split.prompts.map((item) => (current.mode === "main" ? enforceLabelRedesignExecution(item.content) : item.content)), loading: false } : current));
+            setReverseWorkflow((current) =>
+                current
+                    ? {
+                          ...current,
+                          prompts: split.prompts.map((item) => (current.mode === "main" ? enforceLabelRedesignExecution(item.content) : normalizeSecondaryGenerationPrompt(item.content))),
+                          loading: false,
+                      }
+                    : current,
+            );
         } catch (error) {
             const details = error instanceof Error ? error.message : "完整提示词生成失败";
             setReverseWorkflow((current) => (current ? { ...current, loading: false, error: details } : current));
@@ -2195,14 +2204,15 @@ function CanvasWorkspacePage() {
         const gap = 120;
         const promptNodes = reverseWorkflow.prompts.map((content, index) => {
             const plan = reverseWorkflow.plans[index];
+            const promptContent = reverseWorkflow.mode === "secondary" ? normalizeSecondaryGenerationPrompt(content) : content;
             const center = {
                 x: source.position.x + source.width + gap + LONG_PROMPT_NODE_SIZE.width / 2,
                 y: source.position.y + source.height / 2 - ((reverseWorkflow.prompts.length - 1) * (LONG_PROMPT_NODE_SIZE.height + 36)) / 2 + index * (LONG_PROMPT_NODE_SIZE.height + 36),
             };
             return {
                 ...createSizedTextNode(center, LONG_PROMPT_NODE_SIZE, {
-                    content,
-                    prompt: content,
+                    content: promptContent,
+                    prompt: promptContent,
                     status: NODE_STATUS_SUCCESS,
                     fontSize: READABLE_TEXT_FONT_SIZE,
                     imageReferenceMode: reverseWorkflow.mode === "main" ? "redesign-label" : "secondary-product",
